@@ -6,7 +6,7 @@ import AuthGuard from "@/components/AuthGuard";
 import NewProjectModal from "@/components/NewProjectModal";
 import { authService } from "@/lib/services/auth";
 import { draftService } from "@/lib/services/drafts";
-import type { AspectRatio, Draft } from "@/lib/types";
+import type { AspectRatio, Draft, ProjectMode } from "@/lib/types";
 
 function formatTime(ts: number) {
   return new Date(ts).toLocaleString("zh-CN", {
@@ -23,17 +23,19 @@ function DraftList() {
   const [loaded, setLoaded] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
-  const reload = useCallback(async () => {
-    setDrafts(await draftService.list());
-    setLoaded(true);
+  const reload = useCallback(() => {
+    draftService.list().then((list) => {
+      setDrafts(list);
+      setLoaded(true);
+    });
   }, []);
 
   useEffect(() => {
     reload();
   }, [reload]);
 
-  async function handleCreate(ratio: AspectRatio) {
-    const draft = await draftService.create(ratio);
+  async function handleCreate(ratio: AspectRatio, mode: ProjectMode) {
+    const draft = await draftService.create(ratio, mode);
     router.push(`/editor/${draft.id}`);
   }
 
@@ -111,7 +113,7 @@ function DraftList() {
                   }`}
                 />
                 <span className="absolute left-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white">
-                  {draft.aspectRatio}
+                  {draft.mode === "gallery" ? "图文" : draft.aspectRatio}
                 </span>
                 <button
                   type="button"
@@ -127,7 +129,10 @@ function DraftList() {
               <div className="p-3">
                 <p className="truncate text-sm font-medium">{draft.title}</p>
                 <p className="mt-1 text-xs text-zinc-400">
-                  {formatTime(draft.updatedAt)} · {draft.clips.length} 个片段
+                  {formatTime(draft.updatedAt)} ·{" "}
+                  {draft.mode === "gallery"
+                    ? `${draft.gallery.length} 张图片`
+                    : `${draft.clips.length} 个片段`}
                 </p>
               </div>
             </div>

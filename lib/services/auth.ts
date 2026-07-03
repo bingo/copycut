@@ -26,15 +26,23 @@ class LocalAuthService implements AuthService {
     localStorage.removeItem(SESSION_KEY);
   }
 
+  // 按原始字符串缓存解析结果,保证同一 session 返回同一引用
+  // (useSyncExternalStore 的 getSnapshot 要求稳定快照)
+  private cacheRaw: string | null = null;
+  private cacheSession: Session | null = null;
+
   getSession(): Session | null {
     if (typeof window === "undefined") return null;
     const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as Session;
-    } catch {
-      return null;
+    if (raw !== this.cacheRaw) {
+      this.cacheRaw = raw;
+      try {
+        this.cacheSession = raw ? (JSON.parse(raw) as Session) : null;
+      } catch {
+        this.cacheSession = null;
+      }
     }
+    return this.cacheSession;
   }
 }
 

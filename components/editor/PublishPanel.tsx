@@ -42,9 +42,9 @@ export default function PublishPanel({
   }
 
   const warnings = [
-    draft.music && "使用了曲库音乐,发布前请确认音乐版权授权范围(Alpha 曲库为示例数据)",
+    draft.music && "使用的曲库音乐为 CC0 公有领域授权,可免版权商用",
     "如素材来自其他平台,注意画面水印可能触发小红书限流",
-    "Alpha 演示版:发布为草稿整理流程,真实发布与账号授权在 Step 3 接入",
+    "发布为草稿整理流程,小红书账号授权与一键发布在后续版本接入",
   ].filter(Boolean) as string[];
 
   return (

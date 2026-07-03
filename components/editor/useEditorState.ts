@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { draftService } from "@/lib/services/drafts";
+import { assetService } from "@/lib/services/assets";
 import { IMAGE_CLIP_DURATION } from "@/lib/media";
 import type {
   Clip,
@@ -65,7 +66,17 @@ export function useEditorState(id: string) {
   }, [draft]);
 
   useEffect(() => {
-    draftService.get(id).then((d) => (d ? setDraft(d) : setNotFound(true)));
+    draftService.get(id).then((d) => {
+      if (!d) {
+        setNotFound(true);
+        return;
+      }
+      setDraft(d);
+      // 从 OPFS 恢复素材面板(失效的 id 静默丢弃)
+      Promise.all(d.assetIds.map((assetId) => assetService.load(assetId))).then(
+        (loaded) => setAssets(loaded.filter((a): a is MediaAsset => a !== null))
+      );
+    });
   }, [id]);
 
   /** 防抖持久化 */
@@ -147,20 +158,48 @@ export function useEditorState(id: string) {
     [draft?.clips]
   );
 
-  // F-10 mock 播放:定时推进播放头,到尾部停止
+  // F-10 播放时钟:rAF 推进播放头,预览区的 <video>/<audio> 跟随此时钟同步
   useEffect(() => {
     if (!playing) return;
-    const timer = setInterval(() => {
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = (now - last) / 1000;
+      last = now;
       setPlayhead((t) => {
-        if (t + 0.1 >= totalDuration) {
+        if (t + dt >= totalDuration) {
           setPlaying(false);
           return totalDuration;
         }
-        return t + 0.1;
+        return t + dt;
       });
-    }, 100);
-    return () => clearInterval(timer);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, [playing, totalDuration]);
+
+  // ---- 素材 ----
+
+  /** 导入文件:写入 OPFS 并加入素材面板(随草稿持久化) */
+  const importAssets = useCallback(async (files: File[]): Promise<void> => {
+    const supported = files.filter(
+      (f) => f.type.startsWith("video/") || f.type.startsWith("image/")
+    );
+    if (supported.length === 0) return;
+    const imported = await Promise.all(supported.map((f) => assetService.importFile(f)));
+    setAssets((prev) => [...prev, ...imported]);
+    const current = draftRef.current;
+    if (current) {
+      const next = {
+        ...current,
+        assetIds: [...current.assetIds, ...imported.map((a) => a.id)],
+        updatedAt: Date.now(),
+      };
+      setDraft(next);
+      persist(next);
+    }
+  }, [persist]);
 
   // ---- 时间轴操作 ----
 
@@ -266,7 +305,7 @@ export function useEditorState(id: string) {
     notFound,
     saveState,
     assets,
-    setAssets,
+    importAssets,
     selection,
     setSelection,
     playhead,

@@ -1,14 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { detectCapabilities, UNSUPPORTED_HINT } from "@/lib/engine/capabilities";
+import { exportVideoMp4, isExportAbort } from "@/lib/engine/export-video";
+import { exportGalleryZip } from "@/lib/engine/export-images";
+import { downloadBlob } from "@/lib/engine/compose-image";
+import type { AspectRatio } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
 
 const RESOLUTIONS = ["720P", "1080P"] as const;
 const FRAME_RATES = [24, 30, 60] as const;
 
-type Phase = "config" | "exporting" | "done";
+type Resolution = (typeof RESOLUTIONS)[number];
 
-/** F-21 导出面板:分辨率/帧率选择 + mock 进度与成功态(真实渲染在 Step 3) */
+/** 按画布比例换算导出像素尺寸 */
+const EXPORT_SIZE: Record<AspectRatio, Record<Resolution, [number, number]>> = {
+  "9:16": { "720P": [720, 1280], "1080P": [1080, 1920] },
+  "1:1": { "720P": [720, 720], "1080P": [1080, 1080] },
+  "16:9": { "720P": [1280, 720], "1080P": [1920, 1080] },
+};
+
+type Phase = "config" | "exporting" | "done" | "error";
+
+/** F-21 real:视频 MP4 / 图文 ZIP 真实导出,进度与取消 */
 export default function ExportModal({
   editor,
   onClose,
@@ -17,85 +31,117 @@ export default function ExportModal({
   onClose: () => void;
 }) {
   const { draft, totalDuration } = editor;
-  const [resolution, setResolution] = useState<(typeof RESOLUTIONS)[number]>("1080P");
+  const [resolution, setResolution] = useState<Resolution>("1080P");
   const [fps, setFps] = useState<(typeof FRAME_RATES)[number]>(30);
   const [phase, setPhase] = useState<Phase>("config");
   const [progress, setProgress] = useState(0);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<Blob | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const capabilities = useMemo(() => detectCapabilities(), []);
 
-  useEffect(() => () => {
-    if (timer.current) clearInterval(timer.current);
-  }, []);
+  // 卸载时中断进行中的导出
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   if (!draft) return null;
+  const isGallery = draft.mode === "gallery";
+  const canExport = isGallery ? draft.gallery.length > 0 : draft.clips.length > 0;
+  const supported = isGallery || capabilities.video;
 
-  function startExport() {
+  async function startExport() {
+    if (!draft) return;
     setPhase("exporting");
     setProgress(0);
-    timer.current = setInterval(() => {
-      setProgress((p) => {
-        const next = p + Math.random() * 9 + 3;
-        if (next >= 100) {
-          if (timer.current) clearInterval(timer.current);
-          setPhase("done");
-          return 100;
-        }
-        return next;
-      });
-    }, 180);
+    const abort = new AbortController();
+    abortRef.current = abort;
+    try {
+      let blob: Blob;
+      if (isGallery) {
+        blob = await exportGalleryZip(draft, (done, total) => setProgress(done / total));
+      } else {
+        const [width, height] = EXPORT_SIZE[draft.aspectRatio][resolution];
+        blob = await exportVideoMp4({
+          draft,
+          totalDuration,
+          settings: { width, height, fps },
+          onProgress: setProgress,
+          signal: abort.signal,
+        });
+      }
+      setResult(blob);
+      setPhase("done");
+    } catch (e) {
+      if (isExportAbort(e)) {
+        setPhase("config");
+        return;
+      }
+      console.error("[export]", e);
+      setError(e instanceof Error ? e.message : "导出失败,请重试");
+      setPhase("error");
+    }
   }
 
-  function downloadMock() {
-    if (!draft) return;
-    // Alpha 约束:导出 mock 文件而非真实视频
-    const content = [
-      "CopyCut Alpha mock 导出文件",
-      `项目:${draft.title}`,
-      `比例:${draft.aspectRatio} · ${resolution} · ${fps}fps`,
-      `时长:${totalDuration.toFixed(1)}s · 片段数:${draft.clips.length}`,
-      "真实 MP4 渲染将在 Step 3 接入。",
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([content], { type: "text/plain" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${draft.title}-mock.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+  function download() {
+    if (!draft || !result) return;
+    downloadBlob(result, isGallery ? `${draft.title}.zip` : `${draft.title}.mp4`);
   }
+
+  const sizeLabel = result ? `${(result.size / 1024 / 1024).toFixed(1)} MB` : "";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={phase === "exporting" ? undefined : onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={phase === "exporting" ? undefined : onClose}
+    >
       <div
         className="w-full max-w-sm rounded-2xl bg-zinc-900 p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-base font-semibold text-zinc-100">导出</h2>
+        <h2 className="text-base font-semibold text-zinc-100">
+          {isGallery ? "导出图文(ZIP)" : "导出视频(MP4)"}
+        </h2>
 
         {phase === "config" && (
           <>
-            <div className="mt-4">
-              <p className="mb-2 text-xs text-zinc-500">分辨率</p>
-              <div className="flex gap-2">
-                {RESOLUTIONS.map((r) => (
-                  <OptionButton key={r} active={resolution === r} onClick={() => setResolution(r)}>
-                    {r}
-                  </OptionButton>
-                ))}
-              </div>
-            </div>
-            <div className="mt-4">
-              <p className="mb-2 text-xs text-zinc-500">帧率</p>
-              <div className="flex gap-2">
-                {FRAME_RATES.map((f) => (
-                  <OptionButton key={f} active={fps === f} onClick={() => setFps(f)}>
-                    {f} fps
-                  </OptionButton>
-                ))}
-              </div>
-            </div>
-            <p className="mt-4 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-4 text-amber-500">
-              Alpha 演示版:导出为 mock 流程,不生成真实视频文件
-            </p>
+            {!isGallery && (
+              <>
+                <div className="mt-4">
+                  <p className="mb-2 text-xs text-zinc-500">分辨率</p>
+                  <div className="flex gap-2">
+                    {RESOLUTIONS.map((r) => (
+                      <OptionButton key={r} active={resolution === r} onClick={() => setResolution(r)}>
+                        {r}
+                      </OptionButton>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <p className="mb-2 text-xs text-zinc-500">帧率</p>
+                  <div className="flex gap-2">
+                    {FRAME_RATES.map((f) => (
+                      <OptionButton key={f} active={fps === f} onClick={() => setFps(f)}>
+                        {f} fps
+                      </OptionButton>
+                    ))}
+                  </div>
+                </div>
+                {!capabilities.audio && capabilities.video && (
+                  <p className="mt-4 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-4 text-amber-500">
+                    当前浏览器不支持音频编码,导出的视频将没有声音
+                  </p>
+                )}
+              </>
+            )}
+            {isGallery && (
+              <p className="mt-4 text-sm text-zinc-400">
+                将导出 {draft.gallery.length} 张图片(含文字与统一滤镜),打包为 ZIP
+              </p>
+            )}
+            {!supported && (
+              <p className="mt-4 rounded-lg bg-red-500/10 px-3 py-2 text-[11px] leading-4 text-red-400">
+                {UNSUPPORTED_HINT}
+              </p>
+            )}
             <div className="mt-5 flex justify-end gap-3">
               <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800">
                 取消
@@ -103,14 +149,16 @@ export default function ExportModal({
               <button
                 type="button"
                 onClick={startExport}
-                disabled={draft.clips.length === 0}
+                disabled={!canExport || !supported}
                 className="rounded-lg bg-[#ff2442] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 开始导出
               </button>
             </div>
-            {draft.clips.length === 0 && (
-              <p className="mt-2 text-right text-[11px] text-zinc-600">时间轴为空,无法导出</p>
+            {!canExport && (
+              <p className="mt-2 text-right text-[11px] text-zinc-600">
+                {isGallery ? "还没有上传图片,无法导出" : "时间轴为空,无法导出"}
+              </p>
             )}
           </>
         )}
@@ -120,15 +168,28 @@ export default function ExportModal({
             <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
               <div
                 className="h-full rounded-full bg-[#ff2442] transition-[width] duration-150"
-                style={{ width: `${progress}%` }}
+                style={{ width: `${Math.round(progress * 100)}%` }}
               />
             </div>
             <p className="mt-3 text-center text-sm text-zinc-400">
-              正在导出… {Math.floor(progress)}%
+              正在导出… {Math.round(progress * 100)}%
             </p>
             <p className="mt-1 text-center text-[11px] text-zinc-600">
-              {resolution} · {fps}fps · {totalDuration.toFixed(1)}s
+              {isGallery
+                ? `${draft.gallery.length} 张图片`
+                : `${resolution} · ${fps}fps · ${totalDuration.toFixed(1)}s · 本地渲染,不上传素材`}
             </p>
+            {!isGallery && (
+              <div className="mt-4 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => abortRef.current?.abort()}
+                  className="rounded-lg border border-zinc-700 px-4 py-1.5 text-xs text-zinc-400 hover:border-zinc-500"
+                >
+                  取消导出
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -137,21 +198,47 @@ export default function ExportModal({
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-2xl text-emerald-400">
               ✓
             </span>
-            <p className="text-sm text-zinc-200">导出完成(mock)</p>
+            <p className="text-sm text-zinc-200">导出完成</p>
+            <p className="text-xs text-zinc-500">{sizeLabel}</p>
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={downloadMock}
-                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500"
+                onClick={download}
+                className="rounded-lg bg-[#ff2442] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
               >
-                下载 mock 文件
+                下载{isGallery ? " ZIP" : " MP4"}
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg bg-[#ff2442] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500"
               >
                 完成
+              </button>
+            </div>
+          </div>
+        )}
+
+        {phase === "error" && (
+          <div className="mt-5 flex flex-col items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/15 text-2xl text-red-400">
+              ✕
+            </span>
+            <p className="max-w-full break-words text-center text-sm text-red-400">{error}</p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setPhase("config")}
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500"
+              >
+                返回
+              </button>
+              <button
+                type="button"
+                onClick={startExport}
+                className="rounded-lg bg-[#ff2442] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                重试
               </button>
             </div>
           </div>

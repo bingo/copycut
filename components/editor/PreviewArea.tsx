@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { filterToCss, getFilter } from "@/lib/data/filters";
 import { colorAdjustToCss } from "@/lib/color";
 import { formatDuration } from "@/lib/media";
+import { getTrack } from "@/lib/data/music";
 import type { Draft } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
 
@@ -13,9 +14,13 @@ const CANVAS_RATIO: Record<Draft["aspectRatio"], string> = {
   "16:9": "aspect-video w-full max-w-full",
 };
 
+/** 播放中允许的音画漂移,超过则纠偏 seek */
+const DRIFT_TOLERANCE = 0.3;
+
 /**
- * 预览区:当前帧画面(F-10 播放联动)+ 滤镜/调色实时样式 +
- * 文字叠层拖拽 + 手机预览框(F-11)。
+ * 预览区:真实 <video>/<img> 播放(F-10),播放头由 rAF 时钟驱动、
+ * 视频元素跟随同步;滤镜/调色为 CSS 实时预览(与导出 WebGL 数学等价);
+ * 文字叠层拖拽 + 手机预览框(F-11)+ BGM 跟播。
  */
 export default function PreviewArea({ editor }: { editor: EditorState }) {
   const {
@@ -33,14 +38,54 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
   } = editor;
   const [phoneFrame, setPhoneFrame] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const bgmRef = useRef<HTMLAudioElement>(null);
   const dragText = useRef<{ id: string; startX: number; startY: number } | null>(null);
 
-  if (!draft) return null;
-
   const hit = clipAtPlayhead();
-  const currentClip = hit?.[0] ?? draft.clips[0];
+  const currentClip = hit?.[0] ?? draft?.clips[0];
+  const clipOffset = hit?.[1] ?? 0;
   const asset = assets.find((a) => a.id === currentClip?.assetId);
-  const frameSrc = asset?.thumbnail ?? currentClip?.thumbnail;
+  /** 素材未恢复时退化为片段缩略图静帧 */
+  const fallbackFrame = currentClip?.thumbnail;
+  const musicTrack = getTrack(draft?.music?.trackId);
+
+  // 视频元素跟随播放头:播放时纠偏,暂停/拖动时精确 seek
+  const expected = currentClip ? currentClip.start + clipOffset : 0;
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || asset?.type !== "video") return;
+    if (playing) {
+      if (video.paused) video.play().catch(() => {});
+      if (Math.abs(video.currentTime - expected) > DRIFT_TOLERANCE)
+        video.currentTime = expected;
+    } else {
+      if (!video.paused) video.pause();
+      if (Math.abs(video.currentTime - expected) > 0.05) video.currentTime = expected;
+    }
+  }, [playing, expected, asset?.url, asset?.type]);
+
+  // BGM 跟播(试听级:音量生效,淡入淡出在导出时体现)
+  const playheadRef = useRef(playhead);
+  useEffect(() => {
+    playheadRef.current = playhead;
+  }, [playhead]);
+  useEffect(() => {
+    const bgm = bgmRef.current;
+    if (!bgm) return;
+    bgm.volume = (draft?.music?.volume ?? 60) / 100;
+    if (playing && musicTrack) {
+      if (bgm.paused) {
+        // 从播放头对应位置起播(BGM 自时间轴 0 点循环铺底)
+        bgm.currentTime = playheadRef.current % Math.max(musicTrack.duration, 0.1);
+        bgm.play().catch(() => {});
+      }
+    } else if (!bgm.paused) {
+      bgm.pause();
+    }
+  }, [playing, musicTrack, draft?.music?.volume]);
+
+  if (!draft) return null;
 
   const cssFilter = [
     filterToCss(getFilter(draft.filterId), draft.filterStrength),
@@ -48,6 +93,7 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
   ]
     .filter(Boolean)
     .join(" ");
+  const mediaStyle = cssFilter ? { filter: cssFilter } : undefined;
 
   function onTextPointerDown(e: React.PointerEvent, textId: string) {
     e.stopPropagation();
@@ -91,13 +137,31 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
       }`}
       onClick={() => setSelection(null)}
     >
-      {frameSrc ? (
+      {asset?.type === "video" ? (
+        <video
+          ref={videoRef}
+          src={asset.url}
+          className="h-full w-full object-contain"
+          style={mediaStyle}
+          playsInline
+          preload="auto"
+        />
+      ) : asset?.type === "image" ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={frameSrc}
+          src={asset.url}
+          alt={currentClip?.name ?? "当前画面"}
+          className="h-full w-full object-contain"
+          style={mediaStyle}
+          draggable={false}
+        />
+      ) : fallbackFrame ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={fallbackFrame}
           alt="当前画面"
           className="h-full w-full object-contain"
-          style={cssFilter ? { filter: cssFilter } : undefined}
+          style={mediaStyle}
           draggable={false}
         />
       ) : (
@@ -137,6 +201,7 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
 
   return (
     <main className="flex min-w-0 flex-1 flex-col">
+      {musicTrack?.url && <audio ref={bgmRef} src={musicTrack.url} loop preload="auto" />}
       <div className="flex min-h-0 flex-1 items-center justify-center p-6">
         {phoneFrame ? (
           // F-11 手机边框样式(9:16 机身,含刘海和底部条)

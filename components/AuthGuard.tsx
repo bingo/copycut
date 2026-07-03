@@ -23,7 +23,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    if (!session) router.replace("/login");
+    // 直接读存储判断,避免水合期间 server 快照(null)误触发重定向
+    if (!authService.getSession()) router.replace("/login");
   }, [session, router]);
 
   if (!session) return null;

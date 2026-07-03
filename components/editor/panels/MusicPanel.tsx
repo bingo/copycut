@@ -1,20 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MUSIC_CATEGORIES, MUSIC_TRACKS, previewTone } from "@/lib/data/music";
+import { MUSIC_CATEGORIES, MUSIC_TRACKS } from "@/lib/data/music";
 import { formatDuration } from "@/lib/media";
 import { CategoryTabs } from "./FilterPanel";
 import type { EditorState } from "./../useEditorState";
 
-/** F-17 背景音乐库(试听/添加)+ F-18 音量与淡入淡出 */
+/** F-17 背景音乐库(真实音频试听/添加)+ F-18 音量与淡入淡出 */
 export default function MusicPanel({ editor }: { editor: EditorState }) {
   const { draft, apply, pushHistory } = editor;
   const [category, setCategory] = useState<string>(MUSIC_CATEGORIES[0]);
   const [previewing, setPreviewing] = useState<string | null>(null);
-  const stopRef = useRef<(() => void) | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // 卸载面板时停掉试听
-  useEffect(() => () => stopRef.current?.(), []);
+  useEffect(
+    () => () => {
+      audioRef.current?.pause();
+      audioRef.current = null;
+    },
+    []
+  );
 
   if (!draft) return null;
   const music = draft.music;
@@ -22,14 +28,17 @@ export default function MusicPanel({ editor }: { editor: EditorState }) {
   function preview(trackId: string) {
     const track = MUSIC_TRACKS.find((t) => t.id === trackId);
     if (!track) return;
+    audioRef.current?.pause();
     if (previewing === trackId) {
-      stopRef.current?.();
       setPreviewing(null);
       return;
     }
-    stopRef.current = previewTone(track);
+    const audio = new Audio(track.url);
+    audio.volume = 0.7;
+    audio.onended = () => setPreviewing((p) => (p === trackId ? null : p));
+    audio.play().catch(() => {});
+    audioRef.current = audio;
     setPreviewing(trackId);
-    setTimeout(() => setPreviewing((p) => (p === trackId ? null : p)), 2000);
   }
 
   return (
@@ -49,7 +58,7 @@ export default function MusicPanel({ editor }: { editor: EditorState }) {
               <button
                 type="button"
                 onClick={() => preview(track.id)}
-                title="试听(合成示例音)"
+                title="试听"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-xs text-zinc-300 hover:bg-zinc-700"
               >
                 {previewing === track.id ? "⏸" : "▶"}
@@ -81,7 +90,7 @@ export default function MusicPanel({ editor }: { editor: EditorState }) {
           );
         })}
         <p className="text-[11px] leading-4 text-zinc-600">
-          试听为合成示例音,真实版权音乐源在 Step 3 接入
+          曲库为 CC0 公有领域音乐,可免版权商用
         </p>
       </div>
 

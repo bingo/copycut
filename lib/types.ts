@@ -15,8 +15,8 @@ export const PROJECT_MODES: { value: ProjectMode; label: string; hint: string }[
 ];
 
 /**
- * 素材。Step 2 仅在会话内持有 object URL,不跨会话持久化;
- * 重新打开草稿时提示"请重新关联素材"(见 PRD 技术约束)。
+ * 素材。Step 3 起文件本体持久化在 OPFS,元数据存 IndexedDB,
+ * `url` 为会话内从 OPFS 文件创建的 object URL。
  */
 export interface MediaAsset {
   id: string;
@@ -24,10 +24,13 @@ export interface MediaAsset {
   type: "video" | "image";
   /** 时长,秒;图片默认 3s */
   duration: number;
-  /** 会话内 object URL / dataURL */
+  /** 会话内 object URL(从 OPFS File 创建,不持久化) */
   url: string;
-  /** 小尺寸缩略图 dataURL,可随草稿持久化 */
+  /** 小尺寸缩略图 dataURL */
   thumbnail: string;
+  /** 原始像素尺寸,导出分辨率适配用 */
+  width: number;
+  height: number;
 }
 
 /** 时间轴片段。Step 2 仅保存元数据,Step 3 关联真实媒体。 */
@@ -99,11 +102,14 @@ export interface MusicConfig {
 export interface CoverConfig {
   /** 选取的帧对应时间轴时间,秒 */
   frameTime?: number;
-  /** 封面帧缩略图 dataURL(mock 帧) */
+  /** 封面帧缩略图 dataURL(界面展示用) */
   frameThumbnail?: string;
   text?: string;
   /** 封面文字模板 id */
   templateId?: string;
+  /** 帧来源素材与素材内时间,导出时全分辨率重新抽帧 */
+  assetId?: string;
+  assetTime?: number;
 }
 
 /** 发布准备信息 */
@@ -120,6 +126,8 @@ export interface GalleryImage {
   /** 缩略图 dataURL,随草稿持久化 */
   thumbnail: string;
   caption: string;
+  /** 全尺寸原图的素材 id(OPFS),导出与大图预览用 */
+  assetId?: string;
 }
 
 export interface Draft {
@@ -139,6 +147,8 @@ export interface Draft {
   publish?: PublishInfo;
   /** 图文轮播模式的图片序列 */
   gallery: GalleryImage[];
+  /** 素材面板里的素材 id(文件在 OPFS),重开草稿时恢复 */
+  assetIds: string[];
   createdAt: number;
   updatedAt: number;
 }

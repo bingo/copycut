@@ -1,14 +1,14 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { loadAsset } from "@/lib/media";
+import { useEffect, useRef, useState } from "react";
+import { assetService } from "@/lib/services/assets";
 import { filterToCss, getFilter, FILTERS } from "@/lib/data/filters";
 import type { GalleryImage } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
 
 /**
- * 图文轮播模式(F-36):多图上传 + 拖拽排序 + 每图文字;
- * F-37 统一滤镜一键应用到全部图片(预览态)。
+ * 图文轮播模式(F-36):多图上传(OPFS 持久化)+ 拖拽排序 + 每图文字;
+ * F-37 统一滤镜一键应用到全部图片,导出时真实渲染。
  */
 export default function GalleryEditor({ editor }: { editor: EditorState }) {
   const { draft, apply } = editor;
@@ -16,23 +16,49 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [importing, setImporting] = useState(false);
+  /** assetId → 全尺寸 object URL(大图预览用,缺失时退化到缩略图) */
+  const [fullUrls, setFullUrls] = useState<Record<string, string>>({});
+
+  const gallery = draft?.gallery;
+  useEffect(() => {
+    if (!gallery) return;
+    let cancelled = false;
+    for (const item of gallery) {
+      if (!item.assetId || fullUrls[item.assetId] !== undefined) continue;
+      assetService.load(item.assetId).then((asset) => {
+        if (!cancelled && asset)
+          setFullUrls((prev) => ({ ...prev, [asset.id]: asset.url }));
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+    // fullUrls 仅作缓存,不触发重新加载
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gallery]);
 
   if (!draft) return null;
   const images = draft.gallery;
   const active = images.find((g) => g.id === activeId) ?? images[0];
   const cssFilter = filterToCss(getFilter(draft.filterId), draft.filterStrength);
+  const activeUrl = (active?.assetId && fullUrls[active.assetId]) || active?.thumbnail;
 
   async function importFiles(files: FileList) {
     const list = Array.from(files).filter((f) => f.type.startsWith("image/"));
     if (list.length === 0 || !draft) return;
     setImporting(true);
     try {
-      const assets = await Promise.all(list.map(loadAsset));
+      const assets = await Promise.all(list.map((f) => assetService.importFile(f)));
       const added: GalleryImage[] = assets.map((a) => ({
-        id: a.id,
+        id: crypto.randomUUID(),
         name: a.name,
         thumbnail: a.thumbnail,
         caption: "",
+        assetId: a.id,
+      }));
+      setFullUrls((prev) => ({
+        ...prev,
+        ...Object.fromEntries(assets.map((a) => [a.id, a.url])),
       }));
       apply({ gallery: [...draft.gallery, ...added] });
       setActiveId(added[0].id);
@@ -138,7 +164,7 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
             <div className="relative flex max-h-[70%] items-center justify-center overflow-hidden rounded-lg bg-black">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={active.thumbnail}
+                src={activeUrl}
                 alt={active.name}
                 className="max-h-full max-w-full object-contain"
                 style={cssFilter ? { filter: cssFilter } : undefined}

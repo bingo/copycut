@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { TEXT_TEMPLATES, getTextTemplate } from "@/lib/data/text-templates";
+import { exportCoverJpg } from "@/lib/engine/export-images";
+import { downloadBlob } from "@/lib/engine/compose-image";
 import type { CoverConfig, Draft } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
 
 /**
- * 封面模块:帧预览器选帧(F-19,允许 mock 帧)+ 封面文字/模板叠加(F-20)。
- * Step 3 接入真实抽帧与封面 JPG 合成。
+ * 封面模块:帧预览器选帧(F-19)+ 封面文字/模板叠加(F-20)+
+ * 全分辨率封面 JPG 合成导出。
  */
 export default function CoverModal({
   editor,
@@ -18,15 +20,23 @@ export default function CoverModal({
 }) {
   const { draft, clips, apply } = editor;
   const [cover, setCover] = useState<CoverConfig>(draft?.cover ?? {});
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!draft) return null;
 
-  // 帧候选:各片段缩略图按片段时间排布(mock 抽帧)
+  // 帧候选:各片段入点帧;导出时按 assetId + assetTime 全分辨率重新抽帧
   const frames = clips
     .filter((c) => c.thumbnail)
     .map((c, i) => {
       const offset = clips.slice(0, i).reduce((sum, x) => sum + (x.end - x.start), 0);
-      return { time: offset, thumbnail: c.thumbnail!, name: c.name };
+      return {
+        time: offset,
+        thumbnail: c.thumbnail!,
+        name: c.name,
+        assetId: c.assetId,
+        assetTime: c.start,
+      };
     });
 
   const template = getTextTemplate(cover.templateId);
@@ -34,6 +44,20 @@ export default function CoverModal({
   function save() {
     apply({ cover }, { undoable: false });
     onClose();
+  }
+
+  async function exportJpg() {
+    if (!draft) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const blob = await exportCoverJpg({ ...draft, cover });
+      downloadBlob(blob, `${draft.title}-封面.jpg`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "封面导出失败");
+    } finally {
+      setExporting(false);
+    }
   }
 
   const ratioClass: Record<Draft["aspectRatio"], string> = {
@@ -82,7 +106,7 @@ export default function CoverModal({
               )}
             </div>
             <p className="mt-2 text-[11px] leading-4 text-zinc-600">
-              Alpha 使用 mock 帧,真实抽帧与封面合成在 Step 3 接入
+              导出时按所选帧全分辨率合成 JPG
             </p>
           </div>
 
@@ -101,7 +125,13 @@ export default function CoverModal({
                       key={f.time}
                       type="button"
                       onClick={() =>
-                        setCover({ ...cover, frameTime: f.time, frameThumbnail: f.thumbnail })
+                        setCover({
+                          ...cover,
+                          frameTime: f.time,
+                          frameThumbnail: f.thumbnail,
+                          assetId: f.assetId,
+                          assetTime: f.assetTime,
+                        })
                       }
                       className={`relative h-16 w-12 shrink-0 overflow-hidden rounded border-2 ${
                         cover.frameTime === f.time ? "border-[#ff2442]" : "border-transparent hover:border-zinc-600"
@@ -163,13 +193,22 @@ export default function CoverModal({
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-zinc-800 px-5 py-3">
+        <div className="flex items-center justify-end gap-3 border-t border-zinc-800 px-5 py-3">
+          {error && <span className="mr-auto text-xs text-red-400">{error}</span>}
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800"
           >
             取消
+          </button>
+          <button
+            type="button"
+            onClick={exportJpg}
+            disabled={exporting || (!cover.frameThumbnail && !cover.assetId)}
+            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {exporting ? "导出中…" : "导出封面 JPG"}
           </button>
           <button
             type="button"

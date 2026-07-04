@@ -172,11 +172,11 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
         </p>
       )}
 
-      {/* F-15 文字叠层:只显示时间范围覆盖播放头的文字;选中的文字始终显示以便编辑 */}
+      {/* F-15 文字叠层:只显示时间范围覆盖播放头的文字;暂停时选中的文字始终显示以便编辑 */}
       {draft.texts
         .filter(
           (t) =>
-            (selection?.type === "text" && selection.id === t.id) ||
+            (!playing && selection?.type === "text" && selection.id === t.id) ||
             (playhead >= (t.start ?? 0) && playhead <= (t.end ?? Number.POSITIVE_INFINITY))
         )
         .map((t) => (

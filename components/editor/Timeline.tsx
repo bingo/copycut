@@ -206,7 +206,17 @@ export default function Timeline({ editor }: { editor: EditorState }) {
                   <div key={clip.id} className="flex items-stretch">
                     <div
                       draggable
-                      onDragStart={() => setDragIndex(index)}
+                      onDragStart={(e) => {
+                        // 按住修剪手柄移动时,浏览器仍会从 draggable 父元素发起
+                        // 原生拖拽并以 pointercancel 掐断指针流(手柄上的
+                        // stopPropagation 拦不住它),修剪就变成了整段排序拖拽。
+                        // 修剪手势已开始(pointerdown 先于 dragstart)则掐掉原生拖拽。
+                        if (trim.current) {
+                          e.preventDefault();
+                          return;
+                        }
+                        setDragIndex(index);
+                      }}
                       onDragEnd={() => {
                         if (dragIndex !== null && dropIndex !== null) reorderClip(dragIndex, dropIndex);
                         setDragIndex(null);
@@ -386,6 +396,8 @@ function TrimHandle({
   return (
     <div
       {...handlers}
+      // 指针流被系统中断时同样结束手势,避免残留状态误拦下一次排序拖拽
+      onPointerCancel={handlers.onPointerUp}
       className={`absolute bottom-0 top-0 z-10 flex w-2.5 cursor-ew-resize touch-none items-center justify-center bg-[#ff2442] ${
         side === "left" ? "left-0 rounded-l" : "right-0 rounded-r"
       }`}

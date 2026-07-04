@@ -138,6 +138,8 @@ export interface GalleryImage {
 
 export interface Draft {
   id: string;
+  /** 归属用户,格式 "provider:username";多用户上线前的旧草稿没有此字段 */
+  owner?: string;
   title: string;
   mode: ProjectMode;
   aspectRatio: AspectRatio;

@@ -15,6 +15,12 @@ export interface AuthService {
   syncFromServer(): Promise<Session | null>;
   logout(): Promise<void>;
   getSession(): Session | null;
+  /** 当前用户的稳定标识("provider:username"),本地数据按此隔离;未登录返回 null */
+  getOwnerKey(): string | null;
+}
+
+export function ownerKeyOf(session: Session): string {
+  return `${session.provider ?? "password"}:${session.username}`;
 }
 
 const SESSION_KEY = "copycut.session";
@@ -60,6 +66,11 @@ class ApiAuthService implements AuthService {
 
   private setMirror(session: Session): void {
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  }
+
+  getOwnerKey(): string | null {
+    const session = this.getSession();
+    return session ? ownerKeyOf(session) : null;
   }
 
   // 按原始字符串缓存解析结果,保证同一 session 返回同一引用

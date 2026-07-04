@@ -91,6 +91,8 @@ export interface TextOverlay {
   templateId?: string;
   /** 背景色,可为空 */
   background?: string;
+  /** 文字框边框色,可为空 */
+  borderColor?: string;
 }
 
 /** 背景音乐配置 */

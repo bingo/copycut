@@ -11,6 +11,7 @@ export interface RenderText {
   sizePx: number;
   color: string;
   background?: string;
+  borderColor?: string;
   fontWeight: "normal" | "bold";
 }
 
@@ -26,6 +27,7 @@ export function overlayToRenderText(t: TextOverlay, canvasHeight: number): Rende
     sizePx: (t.fontSize * canvasHeight) / 1000,
     color: t.color,
     background: t.background,
+    borderColor: t.borderColor,
     fontWeight: t.fontWeight,
   };
 }
@@ -95,19 +97,27 @@ export function drawTextLayers(
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    if (t.background) {
+    if (t.background || t.borderColor) {
       const padX = t.sizePx * 0.4;
       const padY = t.sizePx * 0.2;
       const maxLineW = Math.max(...lines.map((l) => ctx.measureText(l).width));
       const boxW = maxLineW + padX * 2;
       const boxH = lines.length * lineHeight + padY * 2;
-      ctx.fillStyle = t.background;
       const r = t.sizePx * 0.15;
       const x = cx - boxW / 2;
       const y = cy - boxH / 2;
       ctx.beginPath();
       ctx.roundRect(x, y, boxW, boxH, r);
-      ctx.fill();
+      if (t.background) {
+        ctx.fillStyle = t.background;
+        ctx.fill();
+      }
+      if (t.borderColor) {
+        // 预览边框 2px @ ~500px 高预览画布,导出按画布高度等比
+        ctx.strokeStyle = t.borderColor;
+        ctx.lineWidth = Math.max(1.5, canvasH * 0.004);
+        ctx.stroke();
+      }
     }
 
     ctx.fillStyle = t.color;

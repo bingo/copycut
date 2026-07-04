@@ -326,6 +326,7 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
             top: `${t.y}%`,
             color: t.color,
             background: t.background,
+            border: t.borderColor ? `2px solid ${t.borderColor}` : undefined,
             fontWeight: t.fontWeight,
             fontSize: `${t.fontSize * 0.5}px`,
           }}

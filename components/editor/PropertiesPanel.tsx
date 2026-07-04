@@ -1,6 +1,7 @@
 "use client";
 
 import { getTransition } from "@/lib/data/transitions";
+import type { TextOverlay } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
 
 /** 右侧属性面板:按选中对象(片段/文字)展示可编辑属性 */
@@ -12,6 +13,13 @@ export default function PropertiesPanel({ editor }: { editor: EditorState }) {
     selection?.type === "clip" ? clips.find((c) => c.id === selection.id) : undefined;
   const selectedText =
     selection?.type === "text" ? draft.texts.find((t) => t.id === selection.id) : undefined;
+
+  function updateText(patch: Partial<TextOverlay>) {
+    if (!draft || !selectedText) return;
+    apply({
+      texts: draft.texts.map((t) => (t.id === selectedText.id ? { ...t, ...patch } : t)),
+    });
+  }
 
   return (
     <aside className="flex w-72 shrink-0 flex-col border-l border-zinc-800">
@@ -88,17 +96,11 @@ export default function PropertiesPanel({ editor }: { editor: EditorState }) {
             />
           </Field>
           <div className="flex items-center gap-4">
-            <Field label="颜色">
+            <Field label="文字色">
               <input
                 type="color"
                 value={selectedText.color}
-                onChange={(e) =>
-                  apply({
-                    texts: draft.texts.map((t) =>
-                      t.id === selectedText.id ? { ...t, color: e.target.value } : t
-                    ),
-                  })
-                }
+                onChange={(e) => updateText({ color: e.target.value })}
                 className="h-8 w-12 cursor-pointer rounded border border-zinc-700 bg-transparent"
               />
             </Field>
@@ -106,19 +108,25 @@ export default function PropertiesPanel({ editor }: { editor: EditorState }) {
               <input
                 type="checkbox"
                 checked={selectedText.fontWeight === "bold"}
-                onChange={(e) =>
-                  apply({
-                    texts: draft.texts.map((t) =>
-                      t.id === selectedText.id
-                        ? { ...t, fontWeight: e.target.checked ? "bold" : "normal" }
-                        : t
-                    ),
-                  })
-                }
+                onChange={(e) => updateText({ fontWeight: e.target.checked ? "bold" : "normal" })}
                 className="accent-[#ff2442]"
               />
               加粗
             </label>
+          </div>
+          <div className="flex items-center gap-4">
+            <OptionalColorField
+              label="背景色"
+              value={selectedText.background}
+              fallback="#111111"
+              onChange={(v) => updateText({ background: v })}
+            />
+            <OptionalColorField
+              label="边框色"
+              value={selectedText.borderColor}
+              fallback="#ffffff"
+              onChange={(v) => updateText({ borderColor: v })}
+            />
           </div>
           <button
             type="button"
@@ -152,5 +160,40 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <p className="mb-1 text-xs text-zinc-500">{label}</p>
       {children}
     </div>
+  );
+}
+
+/** 可开关的颜色项:勾选启用后可调色,取消则清除该属性 */
+function OptionalColorField({
+  label,
+  value,
+  fallback,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  /** 首次勾选时的默认色;现值非 6 位 hex(如模板的 rgba)时也用它兜底显示 */
+  fallback: string;
+  onChange: (value: string | undefined) => void;
+}) {
+  const hex = value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+  return (
+    <Field label={label}>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="checkbox"
+          checked={!!value}
+          onChange={(e) => onChange(e.target.checked ? hex : undefined)}
+          className="accent-[#ff2442]"
+        />
+        <input
+          type="color"
+          value={hex}
+          disabled={!value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-8 w-12 cursor-pointer rounded border border-zinc-700 bg-transparent disabled:cursor-not-allowed disabled:opacity-40"
+        />
+      </div>
+    </Field>
   );
 }

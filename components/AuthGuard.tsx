@@ -10,9 +10,9 @@ function subscribe(onChange: () => void) {
 }
 
 /**
- * 客户端登录守卫:session 存在 localStorage(mock),服务端无法读取,
- * 因此不用 proxy.ts 而在客户端校验。服务端快照恒为 null,
- * 水合后由 useSyncExternalStore 重新同步真实 session。
+ * 客户端登录守卫:真实会话在服务端 httpOnly cookie,localStorage 存镜像
+ * 供此处同步读取。镜像缺失时跳回 /login,由登录页从服务端同步后再进入。
+ * 服务端快照恒为 null,水合后由 useSyncExternalStore 重新同步。
  */
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();

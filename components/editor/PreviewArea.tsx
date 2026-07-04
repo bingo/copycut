@@ -172,13 +172,21 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
         </p>
       )}
 
-      {/* F-15 文字叠层 */}
-      {draft.texts.map((t) => (
+      {/* F-15 文字叠层:只显示时间范围覆盖播放头的文字;选中的文字始终显示以便编辑 */}
+      {draft.texts
+        .filter(
+          (t) =>
+            (selection?.type === "text" && selection.id === t.id) ||
+            (playhead >= (t.start ?? 0) && playhead <= (t.end ?? Number.POSITIVE_INFINITY))
+        )
+        .map((t) => (
         <div
           key={t.id}
           onPointerDown={(e) => onTextPointerDown(e, t.id)}
           onPointerMove={onTextPointerMove}
           onPointerUp={onTextPointerUp}
+          // click 与 pointerdown 是独立事件,不拦截会冒泡到画布触发取消选中(属性面板一闪即逝)
+          onClick={(e) => e.stopPropagation()}
           className={`absolute -translate-x-1/2 -translate-y-1/2 cursor-move touch-none select-none whitespace-pre-wrap rounded px-2 py-0.5 text-center leading-snug ${
             selection?.type === "text" && selection.id === t.id
               ? "ring-2 ring-[#ff2442]"

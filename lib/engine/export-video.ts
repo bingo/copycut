@@ -119,7 +119,12 @@ export async function exportVideoMp4(options: {
   const baseCtx = baseCanvas.getContext("2d")!;
   const grade = computeGrade(getFilter(draft.filterId), draft.filterStrength, draft.colorAdjust);
   const grader = isIdentityGrade(grade) ? null : new ColorGrader(width, height);
-  const renderTexts = draft.texts.map((t) => overlayToRenderText(t, height));
+  // 文字带时间范围,逐帧过滤;旧草稿缺省视为覆盖全片
+  const renderTexts = draft.texts.map((t) => ({
+    start: t.start ?? 0,
+    end: t.end ?? Number.POSITIVE_INFINITY,
+    text: overlayToRenderText(t, height),
+  }));
 
   const drawSampleFitted = (target: OffscreenCanvasRenderingContext2D, sample: VideoSample) => {
     const sw = sample.displayWidth;
@@ -211,7 +216,9 @@ export async function exportVideoMp4(options: {
           const graded = grader.apply(canvas, grade);
           ctx.drawImage(graded, 0, 0);
         }
-        if (renderTexts.length) drawTextLayers(ctx, renderTexts, width, height);
+        const visibleTexts = renderTexts.filter((rt) => t >= rt.start && t < rt.end);
+        if (visibleTexts.length)
+          drawTextLayers(ctx, visibleTexts.map((rt) => rt.text), width, height);
         await videoSource.add(t, 1 / fps);
         frame++;
         if (frame % 5 === 0) onProgress?.((frame / totalFrames) * 0.85);

@@ -77,6 +77,10 @@ export const DEFAULT_COLOR_ADJUST: ColorAdjust = {
 export interface TextOverlay {
   id: string;
   content: string;
+  /** 时间轴上的出现时间,秒;缺省(旧草稿)表示从 0 开始 */
+  start?: number;
+  /** 时间轴上的消失时间,秒;缺省(旧草稿)表示显示到片尾 */
+  end?: number;
   /** 位置,画布百分比 0-100 */
   x: number;
   y: number;

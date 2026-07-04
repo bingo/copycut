@@ -6,14 +6,20 @@ import type { EditorState } from "./../useEditorState";
 
 /** F-15 文字添加 + F-16 文字模板库 */
 export default function TextPanel({ editor }: { editor: EditorState }) {
-  const { draft, apply, setSelection } = editor;
+  const { draft, apply, setSelection, playhead, totalDuration } = editor;
   if (!draft) return null;
 
   function addText(partial?: Partial<TextOverlay>) {
     if (!draft) return;
+    // 从播放头处出现,默认 3s;贴近片尾时向前让出最小显示时长
+    const start =
+      totalDuration > 0 ? Math.min(playhead, Math.max(totalDuration - 0.5, 0)) : 0;
+    const end = totalDuration > 0 ? Math.min(start + 3, totalDuration) : start + 3;
     const overlay: TextOverlay = {
       id: crypto.randomUUID(),
       content: "点击输入文字",
+      start,
+      end,
       x: 50,
       y: 50,
       fontSize: 28,
@@ -36,7 +42,7 @@ export default function TextPanel({ editor }: { editor: EditorState }) {
           + 添加文字
         </button>
         <p className="mt-2 text-[11px] text-zinc-600">
-          添加后在预览区拖动调整位置,在右侧属性面板编辑样式
+          添加后在预览区拖动调整位置,在右侧属性面板编辑样式,在时间轴文字轨调整出现时间
         </p>
       </div>
 

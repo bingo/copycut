@@ -4,14 +4,16 @@ import { useRef, useState } from "react";
 import { getTransition } from "@/lib/data/transitions";
 import { getTrack } from "@/lib/data/music";
 import { formatDuration } from "@/lib/media";
+import type { TextOverlay } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
 
 const PX_PER_SEC = 48;
+const MIN_TEXT_DURATION = 0.2;
 
 /**
  * 时间轴:主轨片段排列(F-04)、分割(F-05)、拖拽修剪(F-06)、
  * 删除吸合(F-07)、拖拽排序(F-08)、播放头联动(F-10)、
- * 转场标记(F-14)、音乐轨(F-17)。
+ * 转场标记(F-14)、音乐轨(F-17)、文字轨(F-15)。
  */
 export default function Timeline({ editor }: { editor: EditorState }) {
   const {
@@ -35,10 +37,20 @@ export default function Timeline({ editor }: { editor: EditorState }) {
 
   const trackRef = useRef<HTMLDivElement>(null);
   const trim = useRef<{ clipId: string; edge: "start" | "end"; baseValue: number; baseX: number } | null>(null);
+  const textDrag = useRef<{
+    id: string;
+    mode: "move" | "start" | "end";
+    baseStart: number;
+    baseEnd: number;
+    baseX: number;
+    /** 首次真正移动时才压入撤销历史,避免纯点选产生空历史 */
+    pushed: boolean;
+  } | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
   const selectedClipId = selection?.type === "clip" ? selection.id : null;
+  const selectedTextId = selection?.type === "text" ? selection.id : null;
 
   function seekFromEvent(e: React.PointerEvent) {
     const track = trackRef.current;
@@ -72,6 +84,61 @@ export default function Timeline({ editor }: { editor: EditorState }) {
     trim.current = null;
   }
 
+  // ---- 文字轨:整体拖移 + 两端修剪 ----
+
+  function onTextPointerDown(e: React.PointerEvent, t: TextOverlay, mode: "move" | "start" | "end") {
+    e.stopPropagation();
+    textDrag.current = {
+      id: t.id,
+      mode,
+      baseStart: t.start ?? 0,
+      baseEnd: t.end ?? Math.max(totalDuration, (t.start ?? 0) + MIN_TEXT_DURATION),
+      baseX: e.clientX,
+      pushed: false,
+    };
+    setSelection({ type: "text", id: t.id });
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onTextPointerMove(e: React.PointerEvent) {
+    const d = textDrag.current;
+    if (!d || !draft) return;
+    const delta = (e.clientX - d.baseX) / PX_PER_SEC;
+    if (!d.pushed) {
+      if (delta === 0) return;
+      pushHistory();
+      d.pushed = true;
+    }
+    let start = d.baseStart;
+    let end = d.baseEnd;
+    if (d.mode === "move") {
+      const dur = d.baseEnd - d.baseStart;
+      start = Math.max(0, Math.min(d.baseStart + delta, Math.max(0, totalDuration - dur)));
+      end = start + dur;
+    } else if (d.mode === "start") {
+      start = Math.max(0, Math.min(d.baseStart + delta, d.baseEnd - MIN_TEXT_DURATION));
+    } else {
+      end = Math.min(
+        Math.max(d.baseEnd + delta, d.baseStart + MIN_TEXT_DURATION),
+        Math.max(totalDuration, d.baseStart + MIN_TEXT_DURATION)
+      );
+    }
+    apply(
+      { texts: draft.texts.map((t) => (t.id === d.id ? { ...t, start, end } : t)) },
+      { undoable: false }
+    );
+  }
+
+  function onTextPointerUp() {
+    textDrag.current = null;
+  }
+
+  function deleteText(textId: string) {
+    if (!draft) return;
+    apply({ texts: draft.texts.filter((t) => t.id !== textId) });
+    setSelection(null);
+  }
+
   if (!draft) return null;
 
   const musicTrack = draft.music ? getTrack(draft.music.trackId) : undefined;
@@ -85,8 +152,11 @@ export default function Timeline({ editor }: { editor: EditorState }) {
         <span className="mx-1 text-zinc-700">|</span>
         <ToolButton onClick={splitAtPlayhead} title="在播放头处分割选中片段">✂ 分割</ToolButton>
         <ToolButton
-          onClick={() => selectedClipId && deleteClip(selectedClipId)}
-          title="删除选中片段"
+          onClick={() => {
+            if (selectedClipId) deleteClip(selectedClipId);
+            else if (selectedTextId) deleteText(selectedTextId);
+          }}
+          title="删除选中片段/文字"
         >
           🗑 删除
         </ToolButton>
@@ -96,7 +166,7 @@ export default function Timeline({ editor }: { editor: EditorState }) {
       </div>
 
       {/* 轨道区 */}
-      <div ref={trackRef} className="relative flex-1 overflow-x-auto overflow-y-hidden">
+      <div ref={trackRef} className="relative flex-1 overflow-x-auto overflow-y-auto">
         <div
           className="relative flex h-full min-w-full flex-col gap-1.5 px-3 py-2"
           style={{ width: totalDuration * PX_PER_SEC + 120 }}
@@ -216,6 +286,46 @@ export default function Timeline({ editor }: { editor: EditorState }) {
               })}
             </div>
           )}
+
+          {/* 文字轨(F-15):每条文字一行,拖动整体平移,选中后两端修剪 */}
+          {draft.texts.map((t) => {
+            const start = t.start ?? 0;
+            const end = t.end ?? Math.max(totalDuration, start + MIN_TEXT_DURATION);
+            const selected = t.id === selectedTextId;
+            return (
+              <div key={t.id} className="relative h-6 shrink-0">
+                <div
+                  onPointerDown={(e) => onTextPointerDown(e, t, "move")}
+                  onPointerMove={onTextPointerMove}
+                  onPointerUp={onTextPointerUp}
+                  className={`absolute bottom-0 top-0 flex cursor-grab items-center overflow-hidden rounded-md border bg-purple-900/60 px-2 text-[11px] text-purple-200 active:cursor-grabbing ${
+                    selected ? "border-[#ff2442]" : "border-purple-800 hover:border-purple-500"
+                  }`}
+                  style={{ left: start * PX_PER_SEC, width: Math.max((end - start) * PX_PER_SEC, 16) }}
+                >
+                  <span className="truncate">
+                    T {t.content} · {(end - start).toFixed(1)}s
+                  </span>
+                  {selected && (
+                    <>
+                      <TrimHandle
+                        side="left"
+                        onPointerDown={(e) => onTextPointerDown(e, t, "start")}
+                        onPointerMove={onTextPointerMove}
+                        onPointerUp={onTextPointerUp}
+                      />
+                      <TrimHandle
+                        side="right"
+                        onPointerDown={(e) => onTextPointerDown(e, t, "end")}
+                        onPointerMove={onTextPointerMove}
+                        onPointerUp={onTextPointerUp}
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
 
           {/* 音乐轨(F-17/F-18) */}
           {musicTrack && (

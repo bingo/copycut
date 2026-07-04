@@ -5,7 +5,7 @@ import type { EditorState } from "./useEditorState";
 
 /** 右侧属性面板:按选中对象(片段/文字)展示可编辑属性 */
 export default function PropertiesPanel({ editor }: { editor: EditorState }) {
-  const { draft, clips, selection, apply, deleteClip, setSelection } = editor;
+  const { draft, clips, selection, apply, deleteClip, setSelection, totalDuration } = editor;
   if (!draft) return null;
 
   const selectedClip =
@@ -48,6 +48,12 @@ export default function PropertiesPanel({ editor }: { editor: EditorState }) {
 
       {selectedText && (
         <div className="flex flex-col gap-3 overflow-y-auto p-4 text-sm">
+          <Field label="时间">
+            <p className="text-zinc-400">
+              {(selectedText.start ?? 0).toFixed(1)}s ~{" "}
+              {(selectedText.end ?? totalDuration).toFixed(1)}s(在时间轴文字轨拖动调整)
+            </p>
+          </Field>
           <Field label="内容">
             <textarea
               value={selectedText.content}

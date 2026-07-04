@@ -16,6 +16,7 @@ import { assetService } from "../services/assets";
 import { getFilter } from "../data/filters";
 import { computeGrade, isIdentityGrade, ColorGrader } from "./colorgrade";
 import { drawFitted, drawTextLayers, loadImageElement, overlayToRenderText } from "./compose-image";
+import { TRANSITION_DURATION, drawTransitionFrame, type TransitionSource } from "./transitions";
 import { mixTimelineAudio } from "./audio-mix";
 import type { Draft } from "../types";
 
@@ -24,9 +25,6 @@ export interface VideoExportSettings {
   height: number;
   fps: number;
 }
-
-/** 转场总时长(跨越片段边界前后各一半),秒 */
-const TRANSITION_DURATION = 0.5;
 
 interface PreparedClip {
   timelineStart: number;
@@ -211,7 +209,21 @@ export async function exportVideoMp4(options: {
         const t = i / fps;
         // 合成:底帧 → 转场 → 调色 → 文字
         ctx.drawImage(baseCanvas, 0, 0);
-        applyTransitions(ctx, boundaries, t, width, height);
+        const b = activeBoundary(boundaries, t);
+        if (b) {
+          // 正在实时解码的一侧用活帧,另一侧用预取的边界静帧
+          const live: TransitionSource = { image: baseCanvas, width, height };
+          const progress = (t - (b.time - TRANSITION_DURATION / 2)) / TRANSITION_DURATION;
+          drawTransitionFrame(
+            ctx,
+            b.type,
+            progress,
+            t < b.time ? live : { image: b.prevFrame, width, height },
+            t < b.time ? { image: b.nextFrame, width, height } : live,
+            width,
+            height
+          );
+        }
         if (grader) {
           const graded = grader.apply(canvas, grade);
           ctx.drawImage(graded, 0, 0);
@@ -271,54 +283,17 @@ export async function exportVideoMp4(options: {
   }
 }
 
-/** 在片段边界前后 0.25s 内叠加转场效果 */
-function applyTransitions(
-  ctx: OffscreenCanvasRenderingContext2D,
-  boundaries: Boundary[],
-  t: number,
-  width: number,
-  height: number
-): void {
+/** 播放时刻命中的转场边界(片段短于窗口重叠时取最近的) */
+function activeBoundary(boundaries: Boundary[], t: number): Boundary | null {
   const half = TRANSITION_DURATION / 2;
+  let best: Boundary | null = null;
+  let bestDist = Number.POSITIVE_INFINITY;
   for (const b of boundaries) {
-    if (t < b.time - half || t >= b.time + half) continue;
-    const progress = (t - (b.time - half)) / TRANSITION_DURATION; // 0..1
-    const incoming = t < b.time ? b.nextFrame : null;
-    const outgoing = t >= b.time ? b.prevFrame : null;
-
-    if (b.type === "black" || b.type === "white") {
-      // 闪黑/闪白:边界处峰值
-      ctx.globalAlpha = 1 - Math.abs(progress - 0.5) * 2;
-      ctx.fillStyle = b.type === "black" ? "#000" : "#fff";
-      ctx.fillRect(0, 0, width, height);
-      ctx.globalAlpha = 1;
-    } else if (b.type.startsWith("wipe-")) {
-      // 擦除:入场画面按进度揭示
-      ctx.save();
-      ctx.beginPath();
-      if (b.type === "wipe-l") {
-        if (incoming) ctx.rect(0, 0, width * progress, height);
-        else ctx.rect(width * progress, 0, width * (1 - progress), height);
-      } else if (b.type === "wipe-r") {
-        if (incoming) ctx.rect(width * (1 - progress), 0, width * progress, height);
-        else ctx.rect(0, 0, width * (1 - progress), height);
-      } else {
-        if (incoming) ctx.rect(0, 0, width, height * progress);
-        else ctx.rect(0, height * progress, width, height * (1 - progress));
-      }
-      ctx.clip();
-      ctx.drawImage(incoming ?? outgoing!, 0, 0);
-      ctx.restore();
-    } else {
-      // 其余类型 Alpha 阶段统一按叠化渲染
-      if (incoming) {
-        ctx.globalAlpha = progress;
-        ctx.drawImage(incoming, 0, 0);
-      } else if (outgoing) {
-        ctx.globalAlpha = 1 - progress;
-        ctx.drawImage(outgoing, 0, 0);
-      }
-      ctx.globalAlpha = 1;
+    const dist = Math.abs(t - b.time);
+    if (t >= b.time - half && t < b.time + half && dist < bestDist) {
+      best = b;
+      bestDist = dist;
     }
   }
+  return best;
 }

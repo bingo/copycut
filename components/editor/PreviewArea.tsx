@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { filterToCss, getFilter } from "@/lib/data/filters";
 import { colorAdjustToCss } from "@/lib/color";
 import { formatDuration } from "@/lib/media";
 import { getTrack } from "@/lib/data/music";
+import { extractVideoFrame, loadImageElement } from "@/lib/engine/compose-image";
+import {
+  TRANSITION_DURATION,
+  drawTransitionFrame,
+  type TransitionSource,
+} from "@/lib/engine/transitions";
 import type { Draft } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
 
@@ -16,6 +22,23 @@ const CANVAS_RATIO: Record<Draft["aspectRatio"], string> = {
 
 /** 播放中允许的音画漂移,超过则纠偏 seek */
 const DRIFT_TOLERANCE = 0.3;
+
+/** 转场边界一侧的取帧点 */
+interface FramePoint {
+  assetId: string;
+  time: number;
+}
+
+/** 预览转场边界:时间轴时刻 + 前后片段的取帧点 */
+interface PreviewBoundary {
+  time: number;
+  type: string;
+  prev: FramePoint;
+  next: FramePoint;
+}
+
+/** 帧缓存键;时间取整到 0.1s,拖拽修剪过程中不至于每帧重新抽帧 */
+const frameKey = (p: FramePoint) => `${p.assetId}@${p.time.toFixed(1)}`;
 
 /**
  * 预览区:真实 <video>/<img> 播放(F-10),播放头由 rAF 时钟驱动、
@@ -41,6 +64,10 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const bgmRef = useRef<HTMLAudioElement>(null);
   const dragText = useRef<{ id: string; startX: number; startY: number } | null>(null);
+  const transitionCanvasRef = useRef<HTMLCanvasElement>(null);
+  const frameCache = useRef(new Map<string, TransitionSource>());
+  /** 抽帧完成后递增,触发转场层重绘(缓存本身放 ref 不重渲染) */
+  const [framesVersion, setFramesVersion] = useState(0);
 
   const hit = clipAtPlayhead();
   const currentClip = hit?.[0] ?? draft?.clips[0];
@@ -84,6 +111,100 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
       bgm.pause();
     }
   }, [playing, musicTrack, draft?.music?.volume]);
+
+  // ---- F-14 预览转场:边界前后各 0.25s 用预取的边界帧绘制真实转场 ----
+
+  const clipList = draft?.clips;
+  const boundaries = useMemo<PreviewBoundary[]>(() => {
+    const list: PreviewBoundary[] = [];
+    const cs = clipList ?? [];
+    let acc = 0;
+    for (let i = 0; i < cs.length; i++) {
+      const c = cs[i];
+      acc += c.end - c.start;
+      const n = cs[i + 1];
+      if (!c.transitionAfter || !n || !c.assetId || !n.assetId) continue;
+      list.push({
+        time: acc,
+        type: c.transitionAfter,
+        prev: { assetId: c.assetId, time: Math.max(c.start, c.end - 0.05) },
+        next: { assetId: n.assetId, time: n.start },
+      });
+    }
+    return list;
+  }, [clipList]);
+
+  // 预取边界帧(防抖 300ms,避免拖拽修剪过程中反复抽帧)
+  useEffect(() => {
+    if (boundaries.length === 0) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      for (const b of boundaries) {
+        for (const point of [b.prev, b.next]) {
+          const key = frameKey(point);
+          if (frameCache.current.has(key)) continue;
+          const pointAsset = assets.find((a) => a.id === point.assetId);
+          if (!pointAsset) continue;
+          try {
+            const source: TransitionSource =
+              pointAsset.type === "image"
+                ? await loadImageElement(pointAsset.url).then((img) => ({
+                    image: img,
+                    width: img.naturalWidth,
+                    height: img.naturalHeight,
+                  }))
+                : await extractVideoFrame(pointAsset.url, point.time).then((cvs) => ({
+                    image: cvs,
+                    width: cvs.width,
+                    height: cvs.height,
+                  }));
+            if (cancelled) return;
+            frameCache.current.set(key, source);
+            setFramesVersion((v) => v + 1);
+          } catch {
+            // 抽帧失败则该边界退化为硬切
+          }
+        }
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [boundaries, assets]);
+
+  // 播放头进入边界窗口时在叠层 canvas 上绘制转场帧,离开则清空
+  useEffect(() => {
+    const cvs = transitionCanvasRef.current;
+    const g = cvs?.getContext("2d");
+    if (!cvs || !g) return;
+    const half = TRANSITION_DURATION / 2;
+    let active: PreviewBoundary | null = null;
+    let dist = Number.POSITIVE_INFINITY;
+    for (const b of boundaries) {
+      const d = Math.abs(playhead - b.time);
+      if (playhead >= b.time - half && playhead < b.time + half && d < dist) {
+        active = b;
+        dist = d;
+      }
+    }
+    const prevFrame = active && frameCache.current.get(frameKey(active.prev));
+    const nextFrame = active && frameCache.current.get(frameKey(active.next));
+    if (!active || !prevFrame || !nextFrame) {
+      g.clearRect(0, 0, cvs.width, cvs.height);
+      return;
+    }
+    const rect = cvs.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(rect.width * dpr));
+    const h = Math.max(1, Math.round(rect.height * dpr));
+    if (cvs.width !== w || cvs.height !== h) {
+      cvs.width = w;
+      cvs.height = h;
+    }
+    const progress = (playhead - (active.time - half)) / TRANSITION_DURATION;
+    drawTransitionFrame(g, active.type, progress, prevFrame, nextFrame, w, h);
+  }, [playhead, boundaries, framesVersion]);
 
   if (!draft) return null;
 
@@ -171,6 +292,14 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
           导入素材后显示画面
         </p>
       )}
+
+      {/* F-14 转场叠层:仅边界窗口内有内容,其余时间保持透明;
+          顺带掩盖片段切换时 video 换源的加载间隙 */}
+      <canvas
+        ref={transitionCanvasRef}
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        style={mediaStyle}
+      />
 
       {/* F-15 文字叠层:只显示时间范围覆盖播放头的文字;暂停时选中的文字始终显示以便编辑 */}
       {draft.texts

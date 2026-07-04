@@ -1,4 +1,4 @@
-/** 转场库(Step 2:仅 UI 标记,Step 3 真实渲染)。 */
+/** 转场库。真实渲染见 lib/engine/transitions.ts(预览与导出共用)。 */
 export interface TransitionPreset {
   id: string;
   name: string;

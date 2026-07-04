@@ -151,7 +151,7 @@ export default function LoginPage() {
 
         <div className="my-6 flex items-center gap-3 text-xs text-zinc-400">
           <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
-          或使用测试账号
+          或使用账号密码登录
           <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
         </div>
 
@@ -162,7 +162,7 @@ export default function LoginPage() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="admin"
+              placeholder="用户名"
               autoComplete="username"
               className="rounded-lg border border-zinc-300 px-3 py-2 outline-none transition-colors focus:border-[#ff2442] dark:border-zinc-700 dark:bg-zinc-800"
             />
@@ -190,9 +190,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-zinc-400">
-          Alpha 演示版 · 测试账号 admin / passw0rd
-        </p>
+        <p className="mt-6 text-center text-xs text-zinc-400">Alpha 演示版</p>
       </div>
     </div>
   );

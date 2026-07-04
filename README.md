@@ -16,6 +16,17 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## 登录认证
+
+支持两种登录方式:
+
+- **测试账号**:`admin` / `passw0rd`(仅此一组,写死在 `app/api/auth/login/route.ts`)
+- **OAuth**:Google / GitHub / Facebook。复制 `.env.example` 为 `.env.local`,
+  填入各平台 OAuth 应用的 Client ID/Secret 后即可使用;回调地址统一为
+  `{站点地址}/api/auth/{provider}/callback`。未配置凭据时,对应按钮会提示"尚未配置"。
+
+会话为 HMAC 签名的 httpOnly cookie(7 天有效),生产环境请配置 `AUTH_SECRET`。
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

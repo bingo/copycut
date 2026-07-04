@@ -159,7 +159,15 @@ export interface Draft {
   updatedAt: number;
 }
 
+export type AuthProvider = "password" | "google" | "github" | "facebook";
+export type OAuthProviderId = Exclude<AuthProvider, "password">;
+
 export interface Session {
   username: string;
   loginAt: number;
+  /** 登录方式;旧 localStorage 会话没有此字段,视为 password */
+  provider?: AuthProvider;
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
 }

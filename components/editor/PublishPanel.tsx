@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { getTextTemplate } from "@/lib/data/text-templates";
 import type { PublishInfo } from "@/lib/types";
+import PublishPrecheck from "./PublishPrecheck";
 import type { EditorState } from "./useEditorState";
 
 const TITLE_LIMIT = 20;
@@ -10,7 +11,8 @@ const BODY_LIMIT = 1000;
 
 /**
  * F-22 发布准备面板:标题/正文/话题草稿 + 封面安全区示意 +
- * 版权/水印风险提示。小红书发布校验与一键发布在 Step 3 接入。
+ * 版权/水印风险提示。F-63 发布预检(违禁词/格式校验/发布时间建议)
+ * 见 PublishPrecheck。小红书账号授权与一键发布在后续版本接入。
  */
 export default function PublishPanel({
   editor,
@@ -171,6 +173,9 @@ export default function PublishPanel({
               </div>
             )}
           </div>
+
+          {/* F-63 发布预检:违禁词 + 格式校验 + 发布时间建议 */}
+          <PublishPrecheck info={info} />
 
           {/* 风险提示 */}
           <div className="flex flex-col gap-2">

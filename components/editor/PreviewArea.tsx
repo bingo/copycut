@@ -15,10 +15,14 @@ import {
 import type { Draft } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
 
+/**
+ * 画布尺寸:按预览区(container-type:size 的包装层)双向 contain 缩放,
+ * 任一维度到顶就整体缩小,避免画布溢出盖住下方播放控制条
+ */
 const CANVAS_RATIO: Record<Draft["aspectRatio"], string> = {
-  "9:16": "aspect-[9/16] h-full max-h-full",
-  "1:1": "aspect-square h-full max-h-full",
-  "16:9": "aspect-video w-full max-w-full",
+  "9:16": "aspect-[9/16] h-[min(100cqh,calc(100cqw*16/9))]",
+  "1:1": "aspect-square h-[min(100cqh,100cqw)]",
+  "16:9": "aspect-video w-[min(100cqw,calc(100cqh*16/9))]",
 };
 
 /** 播放中允许的音画漂移,超过则纠偏 seek */
@@ -342,10 +346,10 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
   return (
     <main className="flex min-w-0 flex-1 flex-col">
       {musicTrack?.url && <audio ref={bgmRef} src={musicTrack.url} loop preload="auto" />}
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6 [container-type:size]">
         {phoneFrame ? (
           // F-11 手机边框样式(9:16 机身,含刘海和底部条)
-          <div className="relative flex aspect-[9/19] h-full max-h-full flex-col rounded-[36px] border-[6px] border-zinc-700 bg-zinc-900 p-1.5 shadow-2xl">
+          <div className="relative flex aspect-[9/19] h-[min(100cqh,calc(100cqw*19/9))] flex-col rounded-[36px] border-[6px] border-zinc-700 bg-zinc-900 p-1.5 shadow-2xl">
             <div className="absolute left-1/2 top-2.5 z-10 h-4 w-20 -translate-x-1/2 rounded-full bg-zinc-800" />
             <div className="min-h-0 flex-1 overflow-hidden rounded-[28px]">{canvas}</div>
             <div className="absolute bottom-2 left-1/2 h-1 w-16 -translate-x-1/2 rounded-full bg-zinc-600" />

@@ -25,19 +25,31 @@ export default function CoverModal({
 
   if (!draft) return null;
 
-  // 帧候选:各片段入点帧;导出时按 assetId + assetTime 全分辨率重新抽帧
-  const frames = clips
-    .filter((c) => c.thumbnail)
-    .map((c, i) => {
-      const offset = clips.slice(0, i).reduce((sum, x) => sum + (x.end - x.start), 0);
-      return {
-        time: offset,
-        thumbnail: c.thumbnail!,
-        name: c.name,
-        assetId: c.assetId,
-        assetTime: c.start,
-      };
-    });
+  // 帧候选:时间轴模式取各片段入点帧,导出时按 assetId + assetTime 全分辨率重新抽帧;
+  // 图文轮播模式没有时间轴,候选为轮播图片序列(time 存序号,仅用于选中态与标注)
+  const isGallery = draft.mode === "gallery";
+  const frames = isGallery
+    ? draft.gallery.map((g, i) => ({
+        time: i,
+        thumbnail: g.thumbnail,
+        name: g.name,
+        label: `第${i + 1}张`,
+        assetId: g.assetId,
+        assetTime: undefined as number | undefined,
+      }))
+    : clips
+        .filter((c) => c.thumbnail)
+        .map((c, i) => {
+          const offset = clips.slice(0, i).reduce((sum, x) => sum + (x.end - x.start), 0);
+          return {
+            time: offset,
+            thumbnail: c.thumbnail!,
+            name: c.name,
+            label: `${offset.toFixed(1)}s`,
+            assetId: c.assetId as string | undefined,
+            assetTime: c.start as number | undefined,
+          };
+        });
 
   const template = getTextTemplate(cover.templateId);
 
@@ -89,7 +101,9 @@ export default function CoverModal({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={cover.frameThumbnail} alt="封面帧" className="h-full w-full object-cover" />
               ) : (
-                <p className="px-4 text-center text-xs text-zinc-600">从下方帧预览器选取封面帧</p>
+                <p className="px-4 text-center text-xs text-zinc-600">
+                  {isGallery ? "从右侧选择一张图片作为封面" : "从下方帧预览器选取封面帧"}
+                </p>
               )}
               {cover.text && (
                 <span
@@ -113,10 +127,12 @@ export default function CoverModal({
           <div className="flex min-w-0 flex-1 flex-col gap-4">
             {/* F-19 帧预览器 */}
             <div>
-              <p className="mb-2 text-xs font-medium text-zinc-400">帧预览器</p>
+              <p className="mb-2 text-xs font-medium text-zinc-400">
+                {isGallery ? "选择封面图片" : "帧预览器"}
+              </p>
               {frames.length === 0 ? (
                 <p className="rounded-lg bg-zinc-800/60 px-3 py-2 text-xs text-zinc-500">
-                  时间轴还没有带画面的片段,先导入素材
+                  {isGallery ? "轮播里还没有图片,先添加图片" : "时间轴还没有带画面的片段,先导入素材"}
                 </p>
               ) : (
                 <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -140,7 +156,7 @@ export default function CoverModal({
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={f.thumbnail} alt={f.name} className="h-full w-full object-cover" />
                       <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-[9px] text-zinc-300">
-                        {f.time.toFixed(1)}s
+                        {f.label}
                       </span>
                     </button>
                   ))}

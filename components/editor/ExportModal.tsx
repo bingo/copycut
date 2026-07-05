@@ -5,6 +5,15 @@ import { detectCapabilities, UNSUPPORTED_HINT } from "@/lib/engine/capabilities"
 import { exportVideoMp4, isExportAbort } from "@/lib/engine/export-video";
 import { exportGalleryZip } from "@/lib/engine/export-images";
 import { downloadBlob } from "@/lib/engine/compose-image";
+import {
+  EXPORT_PRESETS,
+  XHS_BITRATES_MBPS,
+  XHS_DEFAULT_BITRATE_MBPS,
+  XHS_EXPORT_FPS,
+  XHS_EXPORT_SIZE,
+  XHS_PRESET_REASONS,
+  type ExportPresetId,
+} from "@/lib/data/export-presets";
 import type { AspectRatio } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
 
@@ -22,7 +31,7 @@ const EXPORT_SIZE: Record<AspectRatio, Record<Resolution, [number, number]>> = {
 
 type Phase = "config" | "exporting" | "done" | "error";
 
-/** F-21 real:视频 MP4 / 图文 ZIP 真实导出,进度与取消 */
+/** F-21 real:视频 MP4 / 图文 ZIP 真实导出,进度与取消;F-60:小红书零画质损失导出预设 */
 export default function ExportModal({
   editor,
   onClose,
@@ -31,6 +40,9 @@ export default function ExportModal({
   onClose: () => void;
 }) {
   const { draft, totalDuration } = editor;
+  const [presetId, setPresetId] = useState<ExportPresetId>("xhs");
+  const [bitrateMbps, setBitrateMbps] =
+    useState<(typeof XHS_BITRATES_MBPS)[number]>(XHS_DEFAULT_BITRATE_MBPS);
   const [resolution, setResolution] = useState<Resolution>("1080P");
   const [fps, setFps] = useState<(typeof FRAME_RATES)[number]>(30);
   const [phase, setPhase] = useState<Phase>("config");
@@ -47,6 +59,12 @@ export default function ExportModal({
   const isGallery = draft.mode === "gallery";
   const canExport = isGallery ? draft.gallery.length > 0 : draft.clips.length > 0;
   const supported = isGallery || capabilities.video;
+  // 当前生效的导出参数(预设 or 自定义)
+  const isXhsPreset = presetId === "xhs";
+  const [exportW, exportH] = isXhsPreset
+    ? XHS_EXPORT_SIZE[draft.aspectRatio]
+    : EXPORT_SIZE[draft.aspectRatio][resolution];
+  const exportFps = isXhsPreset ? XHS_EXPORT_FPS : fps;
 
   async function startExport() {
     if (!draft) return;
@@ -59,11 +77,15 @@ export default function ExportModal({
       if (isGallery) {
         blob = await exportGalleryZip(draft, (done, total) => setProgress(done / total));
       } else {
-        const [width, height] = EXPORT_SIZE[draft.aspectRatio][resolution];
         blob = await exportVideoMp4({
           draft,
           totalDuration,
-          settings: { width, height, fps },
+          settings: {
+            width: exportW,
+            height: exportH,
+            fps: exportFps,
+            bitrate: isXhsPreset ? bitrateMbps * 1_000_000 : undefined,
+          },
           onProgress: setProgress,
           signal: abort.signal,
         });
@@ -106,25 +128,65 @@ export default function ExportModal({
             {!isGallery && (
               <>
                 <div className="mt-4">
-                  <p className="mb-2 text-xs text-zinc-500">分辨率</p>
+                  <p className="mb-2 text-xs text-zinc-500">导出预设</p>
                   <div className="flex gap-2">
-                    {RESOLUTIONS.map((r) => (
-                      <OptionButton key={r} active={resolution === r} onClick={() => setResolution(r)}>
-                        {r}
+                    {EXPORT_PRESETS.map((p) => (
+                      <OptionButton key={p.id} active={presetId === p.id} onClick={() => setPresetId(p.id)}>
+                        <span className="block">{p.name}</span>
+                        <span className="block text-[10px] opacity-70">{p.hint}</span>
                       </OptionButton>
                     ))}
                   </div>
                 </div>
-                <div className="mt-4">
-                  <p className="mb-2 text-xs text-zinc-500">帧率</p>
-                  <div className="flex gap-2">
-                    {FRAME_RATES.map((f) => (
-                      <OptionButton key={f} active={fps === f} onClick={() => setFps(f)}>
-                        {f} fps
-                      </OptionButton>
-                    ))}
-                  </div>
-                </div>
+                {isXhsPreset && (
+                  <>
+                    <div className="mt-4">
+                      <p className="mb-2 text-xs text-zinc-500">码率(8–12 Mbps 安全区间)</p>
+                      <div className="flex gap-2">
+                        {XHS_BITRATES_MBPS.map((m) => (
+                          <OptionButton key={m} active={bitrateMbps === m} onClick={() => setBitrateMbps(m)}>
+                            {m} Mbps
+                          </OptionButton>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs text-zinc-500">
+                      {exportW}×{exportH} · {XHS_EXPORT_FPS}fps · 按画布比例自动匹配
+                    </p>
+                    <div className="mt-3 rounded-lg bg-zinc-800/60 px-3 py-2">
+                      <p className="text-[11px] font-medium text-zinc-300">为什么是这些参数</p>
+                      <ul className="mt-1 space-y-1 text-[11px] leading-4 text-zinc-500">
+                        {XHS_PRESET_REASONS.map((reason) => (
+                          <li key={reason}>· {reason}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                )}
+                {!isXhsPreset && (
+                  <>
+                    <div className="mt-4">
+                      <p className="mb-2 text-xs text-zinc-500">分辨率</p>
+                      <div className="flex gap-2">
+                        {RESOLUTIONS.map((r) => (
+                          <OptionButton key={r} active={resolution === r} onClick={() => setResolution(r)}>
+                            {r}
+                          </OptionButton>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <p className="mb-2 text-xs text-zinc-500">帧率</p>
+                      <div className="flex gap-2">
+                        {FRAME_RATES.map((f) => (
+                          <OptionButton key={f} active={fps === f} onClick={() => setFps(f)}>
+                            {f} fps
+                          </OptionButton>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
                 {!capabilities.audio && capabilities.video && (
                   <p className="mt-4 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-4 text-amber-500">
                     当前浏览器不支持音频编码,导出的视频将没有声音
@@ -177,7 +239,9 @@ export default function ExportModal({
             <p className="mt-1 text-center text-[11px] text-zinc-600">
               {isGallery
                 ? `${draft.gallery.length} 张图片`
-                : `${resolution} · ${fps}fps · ${totalDuration.toFixed(1)}s · 本地渲染,不上传素材`}
+                : `${exportW}×${exportH} · ${exportFps}fps${
+                    isXhsPreset ? ` · ${bitrateMbps} Mbps` : ""
+                  } · ${totalDuration.toFixed(1)}s · 本地渲染,不上传素材`}
             </p>
             {!isGallery && (
               <div className="mt-4 flex justify-center">

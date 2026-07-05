@@ -9,6 +9,7 @@ import {
   composeToCanvas,
   extractVideoFrame,
   loadImageElement,
+  overlayToRenderText,
   type RenderText,
 } from "./compose-image";
 import type { AspectRatio, Draft } from "../types";
@@ -73,6 +74,10 @@ export async function exportCoverJpg(draft: Draft): Promise<Blob> {
       background: template?.style.background,
       fontWeight: template?.style.fontWeight ?? "bold",
     });
+  }
+  // F-61:封面模板物化的分层标题(主/副标题),与画面文字同标尺渲染
+  for (const layer of cover.coverTexts ?? []) {
+    if (layer.content.trim()) texts.push(overlayToRenderText(layer, height));
   }
 
   const canvas = composeToCanvas({

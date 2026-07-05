@@ -115,6 +115,10 @@ export interface CoverConfig {
   text?: string;
   /** 封面文字模板 id */
   templateId?: string;
+  /** 封面模板 id(lib/data/cover-templates.ts,小红书风格模板库) */
+  coverTemplateId?: string;
+  /** 模板应用后物化的分层标题(与画面文字同结构),可手动微调 */
+  coverTexts?: TextOverlay[];
   /** 帧来源素材与素材内时间,导出时全分辨率重新抽帧 */
   assetId?: string;
   assetTime?: number;

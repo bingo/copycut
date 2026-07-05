@@ -12,7 +12,9 @@ import GalleryEditor from "@/components/editor/GalleryEditor";
 import CoverModal from "@/components/editor/CoverModal";
 import ExportModal from "@/components/editor/ExportModal";
 import PublishPanel from "@/components/editor/PublishPanel";
+import ShortcutsModal from "@/components/editor/ShortcutsModal";
 import { useEditorState } from "@/components/editor/useEditorState";
+import { useEditorShortcuts } from "@/components/editor/useEditorShortcuts";
 
 type Modal = "cover" | "export" | "publish" | null;
 
@@ -21,6 +23,10 @@ function Editor({ id }: { id: string }) {
   const editor = useEditorState(id);
   const { draft, notFound, saveState, apply } = editor;
   const [modal, setModal] = useState<Modal>(null);
+  // F-65 编辑器全局快捷键;弹窗打开时挂起
+  const { helpOpen, openHelp, closeHelp } = useEditorShortcuts(editor, {
+    modalOpen: modal !== null,
+  });
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (notFound) {
@@ -62,6 +68,14 @@ function Editor({ id }: { id: string }) {
           {saveState === "saving" ? "保存中…" : saveState === "saved" ? "已保存" : ""}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={openHelp}
+            title="键盘快捷键 (?)"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-zinc-700 text-xs text-zinc-500 transition-colors hover:border-zinc-500 hover:text-zinc-300"
+          >
+            ?
+          </button>
           <span className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-400">
             {draft.mode === "gallery" ? "图文" : draft.aspectRatio}
           </span>
@@ -94,6 +108,7 @@ function Editor({ id }: { id: string }) {
       {modal === "cover" && <CoverModal editor={editor} onClose={() => setModal(null)} />}
       {modal === "export" && <ExportModal editor={editor} onClose={() => setModal(null)} />}
       {modal === "publish" && <PublishPanel editor={editor} onClose={() => setModal(null)} />}
+      {helpOpen && <ShortcutsModal onClose={closeHelp} />}
     </div>
   );
 }

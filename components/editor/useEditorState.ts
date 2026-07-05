@@ -58,6 +58,8 @@ export function useEditorState(id: string) {
 
   const undoStack = useRef<EditorSnapshot[]>([]);
   const redoStack = useRef<EditorSnapshot[]>([]);
+  /** F-65 编辑器内部剪贴板(复制的片段快照,不跨草稿) */
+  const clipClipboard = useRef<Clip | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftRef = useRef<Draft | null>(null);
 
@@ -138,20 +140,7 @@ export function useEditorState(id: string) {
     persist(next);
   }, [persist]);
 
-  // F-09 撤销/重做快捷键
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [undo, redo]);
+  // F-09 撤销/重做快捷键的绑定已集中到 useEditorShortcuts(F-65),此处只提供 undo/redo action
 
   const totalDuration = useMemo(
     () => (draft?.clips ?? []).reduce((sum, c) => sum + (c.end - c.start), 0),
@@ -178,6 +167,22 @@ export function useEditorState(id: string) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing, totalDuration]);
+
+  /** 播放/暂停;已播到末尾时再次播放从头开始(与播放按钮同一逻辑,供 F-65 空格键复用) */
+  const togglePlay = useCallback(() => {
+    if (totalDuration === 0) return;
+    if (!playing && playhead >= totalDuration) setPlayhead(0);
+    setPlaying(!playing);
+  }, [playing, playhead, totalDuration]);
+
+  /** F-65 播放头微移(方向键逐帧 / Shift 大步),自动暂停以便精确定位 */
+  const seekBy = useCallback(
+    (delta: number) => {
+      setPlaying(false);
+      setPlayhead((t) => Math.max(0, Math.min(totalDuration, t + delta)));
+    },
+    [totalDuration]
+  );
 
   // ---- 素材 ----
 
@@ -287,6 +292,42 @@ export function useEditorState(id: string) {
     [apply]
   );
 
+  // F-65 复制选中片段到内部剪贴板
+  const copySelectedClip = useCallback(() => {
+    const current = draftRef.current;
+    if (!current || selection?.type !== "clip") return;
+    const clip = current.clips.find((c) => c.id === selection.id);
+    if (clip) clipClipboard.current = { ...clip };
+  }, [selection]);
+
+  // F-65 粘贴片段:插到选中片段之后,无选中则追加到末尾
+  const pasteClip = useCallback(() => {
+    const current = draftRef.current;
+    const copied = clipClipboard.current;
+    if (!current || !copied) return;
+    const clip: Clip = { ...copied, id: crypto.randomUUID(), transitionAfter: undefined };
+    const at =
+      selection?.type === "clip"
+        ? current.clips.findIndex((c) => c.id === selection.id)
+        : -1;
+    const next = [...current.clips];
+    next.splice(at === -1 ? next.length : at + 1, 0, clip);
+    apply({ clips: next });
+    setSelection({ type: "clip", id: clip.id });
+  }, [apply, selection]);
+
+  // F-65 删除当前选中(片段或文字),Delete 快捷键与时间轴删除按钮共用
+  const deleteSelected = useCallback(() => {
+    const current = draftRef.current;
+    if (!current || !selection) return;
+    if (selection.type === "clip") {
+      deleteClip(selection.id);
+    } else {
+      apply({ texts: current.texts.filter((t) => t.id !== selection.id) });
+      setSelection(null);
+    }
+  }, [selection, deleteClip, apply]);
+
   // F-08 拖拽排序
   const reorderClip = useCallback(
     (fromIndex: number, toIndex: number) => {
@@ -312,6 +353,8 @@ export function useEditorState(id: string) {
     setPlayhead,
     playing,
     setPlaying,
+    togglePlay,
+    seekBy,
     totalDuration,
     clips,
     apply,
@@ -323,6 +366,9 @@ export function useEditorState(id: string) {
     splitAtPlayhead,
     trimClip,
     deleteClip,
+    copySelectedClip,
+    pasteClip,
+    deleteSelected,
     reorderClip,
   };
 }

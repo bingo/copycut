@@ -55,9 +55,8 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
     draft,
     assets,
     playhead,
-    setPlayhead,
     playing,
-    setPlaying,
+    togglePlay,
     totalDuration,
     clipAtPlayhead,
     selection,
@@ -366,14 +365,10 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
         </span>
         <button
           type="button"
-          onClick={() => {
-            if (totalDuration === 0) return;
-            if (!playing && playhead >= totalDuration) setPlayhead(0);
-            setPlaying(!playing);
-          }}
+          onClick={togglePlay}
           disabled={totalDuration === 0}
           className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-sm text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
-          title={playing ? "暂停" : "播放"}
+          title={playing ? "暂停 (Space)" : "播放 (Space)"}
         >
           {playing ? "⏸" : "▶"}
         </button>

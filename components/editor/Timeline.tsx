@@ -30,7 +30,7 @@ export default function Timeline({ editor }: { editor: EditorState }) {
     redo,
     splitAtPlayhead,
     trimClip,
-    deleteClip,
+    deleteSelected,
     reorderClip,
     apply,
   } = editor;
@@ -133,12 +133,6 @@ export default function Timeline({ editor }: { editor: EditorState }) {
     textDrag.current = null;
   }
 
-  function deleteText(textId: string) {
-    if (!draft) return;
-    apply({ texts: draft.texts.filter((t) => t.id !== textId) });
-    setSelection(null);
-  }
-
   if (!draft) return null;
 
   const musicTrack = draft.music ? getTrack(draft.music.trackId) : undefined;
@@ -150,14 +144,8 @@ export default function Timeline({ editor }: { editor: EditorState }) {
         <ToolButton onClick={undo} title="撤销 (⌘Z)">↩ 撤销</ToolButton>
         <ToolButton onClick={redo} title="重做 (⌘⇧Z)">↪ 重做</ToolButton>
         <span className="mx-1 text-zinc-700">|</span>
-        <ToolButton onClick={splitAtPlayhead} title="在播放头处分割选中片段">✂ 分割</ToolButton>
-        <ToolButton
-          onClick={() => {
-            if (selectedClipId) deleteClip(selectedClipId);
-            else if (selectedTextId) deleteText(selectedTextId);
-          }}
-          title="删除选中片段/文字"
-        >
+        <ToolButton onClick={splitAtPlayhead} title="在播放头处分割片段 (S)">✂ 分割</ToolButton>
+        <ToolButton onClick={deleteSelected} title="删除选中片段/文字 (Delete)">
           🗑 删除
         </ToolButton>
         <span className="ml-auto font-mono text-zinc-500">

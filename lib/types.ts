@@ -87,6 +87,8 @@ export interface TextOverlay {
   fontSize: number;
   color: string;
   fontWeight: "normal" | "bold";
+  /** 字体预设 id(lib/data/fonts.ts),缺省为默认黑体 */
+  fontFamily?: string;
   /** 来源模板 id */
   templateId?: string;
   /** 背景色,可为空 */

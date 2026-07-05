@@ -1,5 +1,6 @@
 "use client";
 
+import { FONTS, getFont } from "@/lib/data/fonts";
 import { getTransition } from "@/lib/data/transitions";
 import type { TextOverlay } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
@@ -75,6 +76,20 @@ export default function PropertiesPanel({ editor }: { editor: EditorState }) {
               rows={2}
               className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm outline-none focus:border-[#ff2442]"
             />
+          </Field>
+          <Field label="字体">
+            <select
+              value={getFont(selectedText.fontFamily).id}
+              onChange={(e) => updateText({ fontFamily: e.target.value })}
+              className="w-full cursor-pointer rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm outline-none focus:border-[#ff2442]"
+              style={{ fontFamily: getFont(selectedText.fontFamily).css }}
+            >
+              {FONTS.map((f) => (
+                <option key={f.id} value={f.id} style={{ fontFamily: f.css }}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label={`字号 ${selectedText.fontSize}`}>
             <input

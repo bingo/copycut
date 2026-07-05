@@ -1,4 +1,5 @@
 import { ColorGrader, isIdentityGrade, type GradeParams } from "./colorgrade";
+import { getFont } from "../data/fonts";
 import type { TextOverlay } from "../types";
 
 /** 画布上渲染的一条文字(像素坐标系) */
@@ -13,6 +14,8 @@ export interface RenderText {
   background?: string;
   borderColor?: string;
   fontWeight: "normal" | "bold";
+  /** CSS font-family 栈,缺省为默认黑体 */
+  fontFamily?: string;
 }
 
 /**
@@ -29,6 +32,7 @@ export function overlayToRenderText(t: TextOverlay, canvasHeight: number): Rende
     background: t.background,
     borderColor: t.borderColor,
     fontWeight: t.fontWeight,
+    fontFamily: getFont(t.fontFamily).css,
   };
 }
 
@@ -93,7 +97,7 @@ export function drawTextLayers(
     const lineHeight = t.sizePx * 1.35;
     const cx = (t.xPct / 100) * canvasW;
     const cy = (t.yPct / 100) * canvasH;
-    ctx.font = `${t.fontWeight === "bold" ? "700" : "400"} ${t.sizePx}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+    ctx.font = `${t.fontWeight === "bold" ? "700" : "400"} ${t.sizePx}px ${t.fontFamily ?? getFont(undefined).css}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 

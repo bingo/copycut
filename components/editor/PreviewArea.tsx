@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { filterToCss, getFilter } from "@/lib/data/filters";
+import { getFont } from "@/lib/data/fonts";
 import { colorAdjustToCss } from "@/lib/color";
 import { formatDuration } from "@/lib/media";
 import { getTrack } from "@/lib/data/music";
@@ -328,6 +329,7 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
             background: t.background,
             border: t.borderColor ? `2px solid ${t.borderColor}` : undefined,
             fontWeight: t.fontWeight,
+            fontFamily: getFont(t.fontFamily).css,
             fontSize: `${t.fontSize * 0.5}px`,
           }}
         >

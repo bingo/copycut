@@ -5,6 +5,7 @@ import { getFilter } from "../data/filters";
 import { computeGrade } from "./colorgrade";
 import {
   canvasToJpeg,
+  captionToRenderText,
   composeToCanvas,
   extractVideoFrame,
   loadImageElement,
@@ -100,15 +101,17 @@ export async function exportGalleryZip(
     const base = await resolveBase(item.assetId, undefined, item.thumbnail);
     if (!base) continue;
     const scale = Math.min(1, GALLERY_MAX_EDGE / Math.max(base.width, base.height));
+    const height = Math.round(base.height * scale);
+    const captionText = captionToRenderText(item, height);
     const canvas = composeToCanvas({
       base: base.source,
       baseWidth: base.width,
       baseHeight: base.height,
       width: Math.round(base.width * scale),
-      height: Math.round(base.height * scale),
+      height,
       fit: "contain",
       grade,
-      caption: item.caption || undefined,
+      texts: captionText ? [captionText] : undefined,
     });
     const blob = await canvasToJpeg(canvas);
     entries[`${String(i + 1).padStart(2, "0")}.jpg`] = new Uint8Array(

@@ -128,12 +128,29 @@ export interface PublishInfo {
 }
 
 /** 图文轮播模式的单张图片 */
+/** 图文轮播单页文字样式;缺省(旧草稿)= 底部居中白字黑底 */
+export interface CaptionStyle {
+  /** 中心点,画布百分比 0-100 */
+  x: number;
+  y: number;
+  /** 与 TextOverlay 同标尺:导出按 canvasHeight/1000 换算 px */
+  fontSize: number;
+  color: string;
+  fontWeight: "normal" | "bold";
+  /** 字体预设 id(lib/data/fonts.ts),缺省为默认黑体 */
+  fontFamily?: string;
+  /** 背景色;空串表示明确去掉背景(undefined 会在持久化后丢失、被缺省值顶回) */
+  background?: string;
+}
+
 export interface GalleryImage {
   id: string;
   name: string;
   /** 缩略图 dataURL,随草稿持久化 */
   thumbnail: string;
   caption: string;
+  /** 文字样式,缺省用 DEFAULT_CAPTION_STYLE(lib/engine/compose-image.ts) */
+  captionStyle?: CaptionStyle;
   /** 全尺寸原图的素材 id(OPFS),导出与大图预览用 */
   assetId?: string;
 }

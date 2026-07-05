@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { assetService } from "@/lib/services/assets";
 import { filterToCss, getFilter, FILTERS } from "@/lib/data/filters";
-import type { GalleryImage } from "@/lib/types";
+import { getFont } from "@/lib/data/fonts";
+import { DEFAULT_CAPTION_STYLE } from "@/lib/engine/compose-image";
+import type { CaptionStyle, GalleryImage } from "@/lib/types";
+import { Field, FontSelect, OptionalColorField } from "./fields";
 import type { EditorState } from "./useEditorState";
 
 /**
@@ -18,6 +21,10 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
   const [importing, setImporting] = useState(false);
   /** assetId → 全尺寸 object URL(大图预览用,缺失时退化到缩略图) */
   const [fullUrls, setFullUrls] = useState<Record<string, string>>({});
+  /** 预览框实高,文字字号按 fontSize × 高/1000 换算(与导出同标尺) */
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [previewH, setPreviewH] = useState(0);
+  const dragCaption = useRef<{ x: number; y: number } | null>(null);
 
   const gallery = draft?.gallery;
   useEffect(() => {
@@ -37,11 +44,21 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gallery]);
 
+  // 预览框随图片/窗口变化,持续跟踪实高保证文字比例与导出一致
+  useEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setPreviewH(el.clientHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+
   if (!draft) return null;
   const images = draft.gallery;
   const active = images.find((g) => g.id === activeId) ?? images[0];
   const cssFilter = filterToCss(getFilter(draft.filterId), draft.filterStrength);
   const activeUrl = (active?.assetId && fullUrls[active.assetId]) || active?.thumbnail;
+  const captionStyle = { ...DEFAULT_CAPTION_STYLE, ...active?.captionStyle };
 
   async function importFiles(files: FileList) {
     const list = Array.from(files).filter((f) => f.type.startsWith("image/"));
@@ -73,6 +90,45 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
     const [item] = next.splice(from, 1);
     next.splice(to, 0, item);
     apply({ gallery: next });
+  }
+
+  function updateStyle(patch: Partial<CaptionStyle>, opts?: { undoable?: boolean }) {
+    if (!draft || !active) return;
+    apply(
+      {
+        gallery: images.map((g) =>
+          g.id === active.id
+            ? { ...g, captionStyle: { ...DEFAULT_CAPTION_STYLE, ...g.captionStyle, ...patch } }
+            : g
+        ),
+      },
+      opts
+    );
+  }
+
+  function onCaptionPointerDown(e: React.PointerEvent) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragCaption.current = { x: e.clientX, y: e.clientY };
+  }
+
+  function onCaptionPointerMove(e: React.PointerEvent) {
+    const drag = dragCaption.current;
+    const box = previewRef.current?.getBoundingClientRect();
+    if (!drag || !box) return;
+    const dx = ((e.clientX - drag.x) / box.width) * 100;
+    const dy = ((e.clientY - drag.y) / box.height) * 100;
+    dragCaption.current = { x: e.clientX, y: e.clientY };
+    updateStyle(
+      {
+        x: Math.max(2, Math.min(98, captionStyle.x + dx)),
+        y: Math.max(2, Math.min(98, captionStyle.y + dy)),
+      },
+      { undoable: false }
+    );
+  }
+
+  function onCaptionPointerUp() {
+    dragCaption.current = null;
   }
 
   return (
@@ -161,7 +217,10 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
       <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 p-6">
         {active ? (
           <>
-            <div className="relative flex max-h-[70%] items-center justify-center overflow-hidden rounded-lg bg-black">
+            <div
+              ref={previewRef}
+              className="relative flex max-h-[70%] items-center justify-center overflow-hidden rounded-lg bg-black"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={activeUrl}
@@ -170,7 +229,21 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
                 style={cssFilter ? { filter: cssFilter } : undefined}
               />
               {active.caption && (
-                <span className="absolute bottom-3 left-1/2 max-w-[90%] -translate-x-1/2 rounded bg-black/60 px-2 py-1 text-center text-sm text-white">
+                <span
+                  onPointerDown={onCaptionPointerDown}
+                  onPointerMove={onCaptionPointerMove}
+                  onPointerUp={onCaptionPointerUp}
+                  className="absolute max-w-[90%] -translate-x-1/2 -translate-y-1/2 cursor-move touch-none select-none whitespace-pre-wrap rounded px-2 py-1 text-center leading-snug hover:ring-1 hover:ring-zinc-500"
+                  style={{
+                    left: `${captionStyle.x}%`,
+                    top: `${captionStyle.y}%`,
+                    color: captionStyle.color,
+                    background: captionStyle.background || undefined,
+                    fontWeight: captionStyle.fontWeight,
+                    fontFamily: getFont(captionStyle.fontFamily).css,
+                    fontSize: Math.max(9, (captionStyle.fontSize * previewH) / 1000),
+                  }}
+                >
                   {active.caption}
                 </span>
               )}
@@ -207,6 +280,57 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
                 rows={3}
                 className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-200 outline-none focus:border-[#ff2442]"
               />
+              <p className="mt-1 text-[11px] leading-4 text-zinc-600">
+                在中间预览图上拖动文字可调整位置
+              </p>
+            </div>
+
+            <Field label="字体">
+              <FontSelect
+                value={captionStyle.fontFamily}
+                onChange={(id) => updateStyle({ fontFamily: id })}
+              />
+            </Field>
+
+            <Field label={`字号 ${captionStyle.fontSize}`}>
+              <input
+                type="range"
+                min={12}
+                max={72}
+                value={captionStyle.fontSize}
+                onChange={(e) =>
+                  updateStyle({ fontSize: Number(e.target.value) }, { undoable: false })
+                }
+                className="w-full accent-[#ff2442]"
+              />
+            </Field>
+
+            <div className="flex items-center gap-4">
+              <Field label="文字色">
+                <input
+                  type="color"
+                  value={captionStyle.color}
+                  onChange={(e) => updateStyle({ color: e.target.value })}
+                  className="h-8 w-12 cursor-pointer rounded border border-zinc-700 bg-transparent"
+                />
+              </Field>
+              <OptionalColorField
+                label="背景色"
+                value={captionStyle.background || undefined}
+                fallback="#111111"
+                onChange={(v) => updateStyle({ background: v ?? "" })}
+              />
+              <label className="mt-4 flex items-center gap-1.5 text-xs text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={captionStyle.fontWeight === "bold"}
+                  onChange={(e) =>
+                    updateStyle({ fontWeight: e.target.checked ? "bold" : "normal" })
+                  }
+                  className="accent-[#ff2442]"
+                />
+                加粗
+              </label>
             </div>
 
             <div>

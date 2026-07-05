@@ -1,6 +1,6 @@
 import { ColorGrader, isIdentityGrade, type GradeParams } from "./colorgrade";
 import { getFont } from "../data/fonts";
-import type { TextOverlay } from "../types";
+import type { CaptionStyle, GalleryImage, TextOverlay } from "../types";
 
 /** 画布上渲染的一条文字(像素坐标系) */
 export interface RenderText {
@@ -33,6 +33,32 @@ export function overlayToRenderText(t: TextOverlay, canvasHeight: number): Rende
     borderColor: t.borderColor,
     fontWeight: t.fontWeight,
     fontFamily: getFont(t.fontFamily).css,
+  };
+}
+
+/** 图文轮播文字的缺省样式:底部居中白字黑底,与样式项加入前的渲染一致(旧草稿兜底) */
+export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
+  x: 50,
+  y: 92,
+  fontSize: 32,
+  color: "#ffffff",
+  fontWeight: "normal",
+  background: "rgba(0,0,0,0.6)",
+};
+
+/** 轮播图片的说明文字 → RenderText;无文字返回 null */
+export function captionToRenderText(item: GalleryImage, canvasHeight: number): RenderText | null {
+  if (!item.caption) return null;
+  const s = { ...DEFAULT_CAPTION_STYLE, ...item.captionStyle };
+  return {
+    content: item.caption,
+    xPct: s.x,
+    yPct: s.y,
+    sizePx: (s.fontSize * canvasHeight) / 1000,
+    color: s.color,
+    background: s.background || undefined,
+    fontWeight: s.fontWeight,
+    fontFamily: getFont(s.fontFamily).css,
   };
 }
 
@@ -139,8 +165,6 @@ export interface ComposeOptions {
   fit: "contain" | "cover";
   texts?: RenderText[];
   grade?: GradeParams;
-  /** 底部说明文字(图文模式 caption) */
-  caption?: string;
 }
 
 /** 合成单帧:底图 fit + 调色(WebGL)+ 文字层,返回结果 canvas */
@@ -161,25 +185,6 @@ export function composeToCanvas(options: ComposeOptions): OffscreenCanvas {
   }
 
   if (options.texts?.length) drawTextLayers(ctx, options.texts, width, height);
-
-  if (options.caption) {
-    drawTextLayers(
-      ctx,
-      [
-        {
-          content: options.caption,
-          xPct: 50,
-          yPct: 92,
-          sizePx: height * 0.032,
-          color: "#ffffff",
-          background: "rgba(0,0,0,0.6)",
-          fontWeight: "normal",
-        },
-      ],
-      width,
-      height
-    );
-  }
 
   return canvas;
 }

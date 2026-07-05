@@ -136,6 +136,60 @@ export function drawTransitionFrame(
       break;
     }
 
+    // —— 慢节奏(F-64:小红书审美,柔和不抢戏)——
+
+    case "soft-fade": {
+      // 柔和叠化:双重平滑让切换更"慢",边界处罩一层极淡暖白柔化对比
+      blitFrame(ctx, prev, w, h);
+      ctx.globalAlpha = smooth(e);
+      blitFrame(ctx, next, w, h);
+      ctx.globalAlpha = 0.12 * a;
+      ctx.fillStyle = "#fff8ef";
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
+      break;
+    }
+
+    case "mist": {
+      // 雾化过渡:画面渐糊、奶白雾气自四周合拢,在雾里完成切换
+      if (FILTER_SUPPORTED) ctx.filter = `blur(${(a * w * 0.015).toFixed(1)}px)`;
+      blitFrame(ctx, prev, w, h);
+      ctx.globalAlpha = e;
+      blitFrame(ctx, next, w, h);
+      ctx.globalAlpha = 1;
+      if (FILTER_SUPPORTED) ctx.filter = "none";
+      const fog = ctx.createRadialGradient(
+        w / 2, h / 2, Math.min(w, h) * 0.1,
+        w / 2, h / 2, Math.max(w, h) * 0.8
+      );
+      fog.addColorStop(0, `rgba(248,244,236,${0.5 * a})`);
+      fog.addColorStop(1, `rgba(248,244,236,${0.85 * a})`);
+      ctx.fillStyle = fog;
+      ctx.fillRect(0, 0, w, h);
+      break;
+    }
+
+    case "breath": {
+      // 呼吸感缩放:旧画面轻轻"吸气"放大淡出,新画面从微放大缓缓"呼气"落回原位
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, w, h);
+      drawTransformed(ctx, prev, w, h, { scale: 1 + 0.08 * e });
+      ctx.globalAlpha = smooth(e);
+      drawTransformed(ctx, next, w, h, { scale: 1.08 - 0.08 * e });
+      ctx.globalAlpha = 1;
+      break;
+    }
+
+    case "blank-fade": {
+      // 留白渐隐:画面先隐入米白留白,在留白处停一拍,新画面再缓缓浮现
+      blitFrame(ctx, front, w, h);
+      ctx.globalAlpha = smooth(Math.min(1, a * 1.5));
+      ctx.fillStyle = "#f7f3ea";
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
+      break;
+    }
+
     case "push-l":
     case "push-r": {
       const dir = type === "push-l" ? -1 : 1;

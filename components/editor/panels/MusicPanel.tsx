@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MUSIC_CATEGORIES, MUSIC_TRACKS } from "@/lib/data/music";
+import { MUSIC_CATEGORIES, MUSIC_MOODS, MUSIC_TRACKS, type MusicMood } from "@/lib/data/music";
 import { formatDuration } from "@/lib/media";
 import { CategoryTabs } from "./FilterPanel";
 import type { EditorState } from "./../useEditorState";
 
-/** F-17 背景音乐库(真实音频试听/添加)+ F-18 音量与淡入淡出 */
+/** F-17 背景音乐库(真实音频试听/添加)+ F-18 音量与淡入淡出 + F-64 氛围筛选 */
 export default function MusicPanel({ editor }: { editor: EditorState }) {
   const { draft, apply, pushHistory } = editor;
   const [category, setCategory] = useState<string>(MUSIC_CATEGORIES[0]);
+  /** 氛围维度筛选,null 表示全部 */
+  const [mood, setMood] = useState<MusicMood | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -24,6 +26,9 @@ export default function MusicPanel({ editor }: { editor: EditorState }) {
 
   if (!draft) return null;
   const music = draft.music;
+  const tracks = MUSIC_TRACKS.filter(
+    (t) => t.category === category && (!mood || t.mood === mood)
+  );
 
   function preview(trackId: string) {
     const track = MUSIC_TRACKS.find((t) => t.id === trackId);
@@ -45,8 +50,32 @@ export default function MusicPanel({ editor }: { editor: EditorState }) {
     <div className="flex flex-1 flex-col overflow-hidden">
       <CategoryTabs categories={MUSIC_CATEGORIES} active={category} onChange={setCategory} />
 
+      {/* F-64:氛围维度筛选,与曲风分类叠加生效 */}
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-zinc-800 px-3 py-2">
+        <span className="shrink-0 pr-1 text-[11px] text-zinc-600">氛围</span>
+        {([null, ...MUSIC_MOODS] as const).map((m) => (
+          <button
+            key={m ?? "all"}
+            type="button"
+            onClick={() => setMood(m)}
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${
+              mood === m
+                ? "border-[#ff2442] text-[#ff2442]"
+                : "border-zinc-800 text-zinc-400 hover:border-zinc-600"
+            }`}
+          >
+            {m ?? "全部"}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-y-auto p-3">
-        {MUSIC_TRACKS.filter((t) => t.category === category).map((track) => {
+        {tracks.length === 0 && (
+          <p className="mb-2 rounded-lg bg-zinc-800/60 px-3 py-2 text-xs leading-5 text-zinc-500">
+            该曲风下暂无「{mood}」氛围的曲目,试试其他氛围或切换曲风
+          </p>
+        )}
+        {tracks.map((track) => {
           const inUse = music?.trackId === track.id;
           return (
             <div
@@ -66,7 +95,7 @@ export default function MusicPanel({ editor }: { editor: EditorState }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm text-zinc-200">{track.name}</p>
                 <p className="text-[11px] text-zinc-500">
-                  {track.artist} · {formatDuration(track.duration)}
+                  {track.artist} · {formatDuration(track.duration)} · {track.mood}
                 </p>
               </div>
               <button

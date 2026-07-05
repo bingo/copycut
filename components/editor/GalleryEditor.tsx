@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { assetService } from "@/lib/services/assets";
+import { captionStyleService, type SavedCaptionStyle } from "@/lib/services/caption-styles";
 import { filterToCss, getFilter, FILTERS } from "@/lib/data/filters";
 import { getFont } from "@/lib/data/fonts";
+import { GALLERY_STYLE_TEMPLATES } from "@/lib/data/gallery-style-templates";
 import { DEFAULT_CAPTION_STYLE } from "@/lib/engine/compose-image";
 import type { CaptionStyle, GalleryImage } from "@/lib/types";
 import { Field, FontSelect, OptionalColorField } from "./fields";
@@ -11,7 +13,8 @@ import type { EditorState } from "./useEditorState";
 
 /**
  * 图文轮播模式(F-36):多图上传(OPFS 持久化)+ 拖拽排序 + 每图文字;
- * F-37 统一滤镜一键应用到全部图片,导出时真实渲染。
+ * F-37 统一滤镜一键应用到全部图片,导出时真实渲染;
+ * F-62 排版模板一键应用 + 个人风格沉淀(localStorage 跨草稿复用)。
  */
 export default function GalleryEditor({ editor }: { editor: EditorState }) {
   const { draft, apply } = editor;
@@ -25,6 +28,16 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
   const previewRef = useRef<HTMLDivElement>(null);
   const [previewH, setPreviewH] = useState(0);
   const dragCaption = useRef<{ x: number; y: number } | null>(null);
+  /** F-62 个人风格(localStorage,跨草稿) */
+  const [myStyles, setMyStyles] = useState<SavedCaptionStyle[]>([]);
+  /** 应用「我的风格」时是否连位置一起覆盖;默认保留每图自定义位置 */
+  const [applyPosition, setApplyPosition] = useState(false);
+  const [namingStyle, setNamingStyle] = useState(false);
+  const [styleName, setStyleName] = useState("");
+
+  useEffect(() => {
+    setMyStyles(captionStyleService.list());
+  }, []);
 
   const gallery = draft?.gallery;
   useEffect(() => {
@@ -104,6 +117,46 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
       },
       opts
     );
+  }
+
+  /**
+   * F-62 套用一套文字样式。排版模板"排版即位置",连 x/y 一起覆盖;
+   * 「我的风格」默认只覆盖样式、保留每图自定义位置(withPosition 由开关决定)。
+   * 只改样式不动 caption,已有文字内容原样保留。
+   */
+  function applyCaptionStyle(
+    style: CaptionStyle,
+    opts: { toAll?: boolean; withPosition?: boolean } = {}
+  ) {
+    if (!draft || !active) return;
+    apply({
+      gallery: images.map((g) => {
+        if (!opts.toAll && g.id !== active.id) return g;
+        const current = { ...DEFAULT_CAPTION_STYLE, ...g.captionStyle };
+        const next = { ...current, ...style };
+        if (!opts.withPosition) {
+          next.x = current.x;
+          next.y = current.y;
+        }
+        return { ...g, captionStyle: next };
+      }),
+    });
+  }
+
+  /** F-62 把当前图调好的样式组合存为个人风格(localStorage,跨草稿) */
+  function saveMyStyle() {
+    const name = styleName.trim();
+    if (!name) return;
+    if (captionStyleService.save(name, captionStyle)) {
+      setMyStyles(captionStyleService.list());
+    }
+    setNamingStyle(false);
+    setStyleName("");
+  }
+
+  function removeMyStyle(id: string) {
+    captionStyleService.remove(id);
+    setMyStyles(captionStyleService.list());
   }
 
   function onCaptionPointerDown(e: React.PointerEvent) {
@@ -331,6 +384,149 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
                 />
                 加粗
               </label>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs text-zinc-500">排版模板(一键套用到本图)</p>
+              <div className="grid grid-cols-2 gap-2">
+                {GALLERY_STYLE_TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    title={`套用「${t.name}」`}
+                    onClick={() => applyCaptionStyle(t.style, { withPosition: true })}
+                    className="flex flex-col items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-950 px-1 py-2 hover:border-zinc-600"
+                  >
+                    <span
+                      className="max-w-full truncate rounded px-1.5 py-0.5 text-[11px] leading-4"
+                      style={{
+                        color: t.style.color,
+                        background: t.style.background || undefined,
+                        fontWeight: t.style.fontWeight,
+                        fontFamily: getFont(t.style.fontFamily).css,
+                      }}
+                    >
+                      {t.sample}
+                    </span>
+                    <span className="text-[11px] text-zinc-500">{t.name}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] leading-4 text-zinc-600">
+                模板自带排版位置,套用后仍可拖拽微调;文字内容不变
+              </p>
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs text-zinc-500">我的风格(跨草稿复用)</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNamingStyle(true);
+                    setStyleName("");
+                  }}
+                  className="text-xs text-[#ff2442] hover:opacity-80"
+                >
+                  + 存为我的风格
+                </button>
+              </div>
+              {namingStyle && (
+                <div className="mb-2 flex items-center gap-2">
+                  <input
+                    value={styleName}
+                    onChange={(e) => setStyleName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveMyStyle();
+                      if (e.key === "Escape") setNamingStyle(false);
+                    }}
+                    placeholder="给这套样式起个名字"
+                    autoFocus
+                    className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 outline-none focus:border-[#ff2442]"
+                  />
+                  <button
+                    type="button"
+                    onClick={saveMyStyle}
+                    disabled={!styleName.trim()}
+                    className="rounded bg-[#ff2442] px-2 py-1 text-xs text-white hover:opacity-90 disabled:opacity-40"
+                  >
+                    保存
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNamingStyle(false)}
+                    className="text-xs text-zinc-500 hover:text-zinc-300"
+                  >
+                    取消
+                  </button>
+                </div>
+              )}
+              {myStyles.length === 0 ? (
+                <p className="text-[11px] leading-4 text-zinc-600">
+                  调好字体/字号/颜色后存为我的风格,所有草稿都能一键复用,保持账号视觉一致
+                </p>
+              ) : (
+                <>
+                  <label className="mb-2 flex items-center gap-1.5 text-xs text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={applyPosition}
+                      onChange={(e) => setApplyPosition(e.target.checked)}
+                      className="accent-[#ff2442]"
+                    />
+                    应用时连文字位置一起覆盖
+                  </label>
+                  {myStyles.map((s) => (
+                    <div
+                      key={s.id}
+                      className="mb-2 flex items-center gap-2 rounded-lg border border-zinc-800 p-2"
+                    >
+                      <span
+                        className="shrink-0 rounded px-1.5 py-0.5 text-xs leading-4"
+                        style={{
+                          color: s.style.color,
+                          background: s.style.background || undefined,
+                          fontWeight: s.style.fontWeight,
+                          fontFamily: getFont(s.style.fontFamily).css,
+                        }}
+                      >
+                        Aa
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-xs text-zinc-300" title={s.name}>
+                        {s.name}
+                      </span>
+                      <button
+                        type="button"
+                        title="应用到当前图"
+                        onClick={() =>
+                          applyCaptionStyle(s.style, { withPosition: applyPosition })
+                        }
+                        className="rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-300 hover:border-zinc-500"
+                      >
+                        本图
+                      </button>
+                      <button
+                        type="button"
+                        title="应用到全部图片"
+                        onClick={() =>
+                          applyCaptionStyle(s.style, { toAll: true, withPosition: applyPosition })
+                        }
+                        className="rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-300 hover:border-zinc-500"
+                      >
+                        全部
+                      </button>
+                      <button
+                        type="button"
+                        title="删除此风格"
+                        onClick={() => removeMyStyle(s.id)}
+                        className="text-xs text-zinc-600 hover:text-red-400"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
 
             <div>

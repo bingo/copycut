@@ -6,7 +6,7 @@ export interface TransitionPreset {
   category: string;
 }
 
-export const TRANSITION_CATEGORIES = ["基础", "运镜", "模糊", "光效", "创意"] as const;
+export const TRANSITION_CATEGORIES = ["基础", "慢节奏", "运镜", "模糊", "光效", "创意"] as const;
 
 export const TRANSITIONS: TransitionPreset[] = [
   // 基础
@@ -16,6 +16,11 @@ export const TRANSITIONS: TransitionPreset[] = [
   { id: "wipe-l", name: "左擦除", icon: "◀", category: "基础" },
   { id: "wipe-r", name: "右擦除", icon: "▶", category: "基础" },
   { id: "wipe-u", name: "上擦除", icon: "▲", category: "基础" },
+  // 慢节奏(F-64:小红书审美,柔和不抢戏,与抖音风的强刺激转场形成差异)
+  { id: "soft-fade", name: "柔和叠化", icon: "◐", category: "慢节奏" },
+  { id: "mist", name: "雾化过渡", icon: "☁", category: "慢节奏" },
+  { id: "breath", name: "呼吸感缩放", icon: "⊙", category: "慢节奏" },
+  { id: "blank-fade", name: "留白渐隐", icon: "▢", category: "慢节奏" },
   // 运镜
   { id: "push-l", name: "左推", icon: "⇤", category: "运镜" },
   { id: "push-r", name: "右推", icon: "⇥", category: "运镜" },

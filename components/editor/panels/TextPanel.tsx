@@ -1,12 +1,16 @@
 "use client";
 
-import { TEXT_TEMPLATES } from "@/lib/data/text-templates";
+import { useState } from "react";
+import { getFont } from "@/lib/data/fonts";
+import { TEXT_TEMPLATES, TEXT_TEMPLATE_CATEGORIES } from "@/lib/data/text-templates";
 import type { TextOverlay } from "@/lib/types";
+import { CategoryTabs } from "./FilterPanel";
 import type { EditorState } from "./../useEditorState";
 
-/** F-15 文字添加 + F-16 文字模板库 */
+/** F-15 文字添加 + F-16 文字模板库(F-64 新增「小红书风」分类) */
 export default function TextPanel({ editor }: { editor: EditorState }) {
   const { draft, apply, setSelection, playhead, totalDuration } = editor;
+  const [category, setCategory] = useState<string>(TEXT_TEMPLATE_CATEGORIES[0]);
   if (!draft) return null;
 
   function addText(partial?: Partial<TextOverlay>) {
@@ -46,11 +50,18 @@ export default function TextPanel({ editor }: { editor: EditorState }) {
         </p>
       </div>
 
-      <div className="border-t border-zinc-800 px-3 py-2 text-xs font-medium text-zinc-400">
+      <div className="border-t border-zinc-800 px-3 pt-2 text-xs font-medium text-zinc-400">
         文字模板
       </div>
-      <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto p-3 pt-0">
-        {TEXT_TEMPLATES.filter((t) => t.scene === "画面").map((t) => (
+      <CategoryTabs
+        categories={TEXT_TEMPLATE_CATEGORIES}
+        active={category}
+        onChange={setCategory}
+      />
+      <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto p-3">
+        {TEXT_TEMPLATES.filter(
+          (t) => t.scene === "画面" && (t.category ?? TEXT_TEMPLATE_CATEGORIES[0]) === category
+        ).map((t) => (
           <button
             key={t.id}
             type="button"
@@ -59,8 +70,10 @@ export default function TextPanel({ editor }: { editor: EditorState }) {
                 content: t.sample,
                 color: t.style.color,
                 background: t.style.background,
+                borderColor: t.style.borderColor,
                 fontWeight: t.style.fontWeight,
                 fontSize: t.style.fontSize,
+                fontFamily: t.style.fontFamily,
                 templateId: t.id,
               })
             }
@@ -71,11 +84,15 @@ export default function TextPanel({ editor }: { editor: EditorState }) {
               style={{
                 color: t.style.color,
                 fontWeight: t.style.fontWeight,
+                fontFamily: getFont(t.style.fontFamily).css,
               }}
             >
               <span
                 className="rounded px-1.5 py-0.5 text-xs"
-                style={{ background: t.style.background }}
+                style={{
+                  background: t.style.background,
+                  border: t.style.borderColor ? `1px solid ${t.style.borderColor}` : undefined,
+                }}
               >
                 {t.sample}
               </span>

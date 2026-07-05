@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectCapabilities, UNSUPPORTED_HINT } from "@/lib/engine/capabilities";
 import { exportVideoMp4, isExportAbort } from "@/lib/engine/export-video";
-import { exportGalleryZip } from "@/lib/engine/export-images";
+import { exportGalleryZip, packVideoZip } from "@/lib/engine/export-images";
 import { downloadBlob } from "@/lib/engine/compose-image";
 import type { AspectRatio } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
@@ -60,13 +60,14 @@ export default function ExportModal({
         blob = await exportGalleryZip(draft, (done, total) => setProgress(done / total));
       } else {
         const [width, height] = EXPORT_SIZE[draft.aspectRatio][resolution];
-        blob = await exportVideoMp4({
+        const mp4 = await exportVideoMp4({
           draft,
           totalDuration,
           settings: { width, height, fps },
           onProgress: setProgress,
           signal: abort.signal,
         });
+        blob = await packVideoZip(draft, mp4);
       }
       setResult(blob);
       setPhase("done");
@@ -83,7 +84,7 @@ export default function ExportModal({
 
   function download() {
     if (!draft || !result) return;
-    downloadBlob(result, isGallery ? `${draft.title}.zip` : `${draft.title}.mp4`);
+    downloadBlob(result, `${draft.title}.zip`);
   }
 
   const sizeLabel = result ? `${(result.size / 1024 / 1024).toFixed(1)} MB` : "";
@@ -132,9 +133,13 @@ export default function ExportModal({
                 )}
               </>
             )}
-            {isGallery && (
+            {isGallery ? (
               <p className="mt-4 text-sm text-zinc-400">
-                将导出 {draft.gallery.length} 张图片(含文字与统一滤镜),打包为 ZIP
+                将导出 {draft.gallery.length} 张图片(含文字与统一滤镜)+ 发布信息 txt,打包为 ZIP
+              </p>
+            ) : (
+              <p className="mt-4 text-[11px] leading-4 text-zinc-600">
+                MP4 与发布信息 txt(标题/正文/话题/活动)打包为 ZIP
               </p>
             )}
             {!supported && (
@@ -206,7 +211,7 @@ export default function ExportModal({
                 onClick={download}
                 className="rounded-lg bg-[#ff2442] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
               >
-                下载{isGallery ? " ZIP" : " MP4"}
+                下载 ZIP
               </button>
               <button
                 type="button"

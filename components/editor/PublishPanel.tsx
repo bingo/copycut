@@ -172,6 +172,17 @@ export default function PublishPanel({
             )}
           </div>
 
+          {/* 活动 */}
+          <div>
+            <p className="mb-1 text-xs font-medium text-zinc-400">活动(Event)</p>
+            <input
+              value={info.event ?? ""}
+              onChange={(e) => setInfo({ ...info, event: e.target.value })}
+              placeholder="参与的官方活动名称,选填"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-[#ff2442]"
+            />
+          </div>
+
           {/* 风险提示 */}
           <div className="flex flex-col gap-2">
             {warnings.map((w) => (

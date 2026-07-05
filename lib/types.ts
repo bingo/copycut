@@ -125,6 +125,8 @@ export interface PublishInfo {
   title: string;
   body: string;
   topics: string[];
+  /** 参与的活动/Event,选填 */
+  event?: string;
 }
 
 /** 图文轮播模式的单张图片 */

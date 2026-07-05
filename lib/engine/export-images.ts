@@ -1,4 +1,4 @@
-import { zip } from "fflate";
+import { strToU8, zip } from "fflate";
 import { assetService } from "../services/assets";
 import { getTextTemplate } from "../data/text-templates";
 import { getFilter } from "../data/filters";
@@ -87,6 +87,35 @@ export async function exportCoverJpg(draft: Draft): Promise<Blob> {
   return canvasToJpeg(canvas);
 }
 
+/** 发布信息 txt:随导出包附带标题/正文/话题/活动,发布时直接复制粘贴 */
+export function buildPublishInfoText(draft: Draft): string {
+  const p = draft.publish;
+  const sections = [
+    `标题:${(p?.title || draft.title).trim()}`,
+    p?.body.trim() && `正文:\n${p.body.trim()}`,
+    p?.topics.length && `话题:${p.topics.map((t) => `#${t}`).join(" ")}`,
+    p?.event?.trim() && `活动:${p.event.trim()}`,
+  ].filter(Boolean);
+  return sections.join("\n\n") + "\n";
+}
+
+function zipEntries(entries: Record<string, Uint8Array>): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    // JPEG/MP4 已压缩,zip 用存储级即可
+    zip(entries, { level: 0 }, (err, data) =>
+      err ? reject(err) : resolve(new Blob([data as BlobPart], { type: "application/zip" }))
+    );
+  });
+}
+
+/** 视频导出:MP4 与发布信息 txt 打包为 ZIP */
+export async function packVideoZip(draft: Draft, video: Blob): Promise<Blob> {
+  return zipEntries({
+    [`${draft.title}.mp4`]: new Uint8Array(await video.arrayBuffer()),
+    "发布信息.txt": strToU8(buildPublishInfoText(draft)),
+  });
+}
+
 /** F-36/37 real:图文序列合成 → ZIP */
 export async function exportGalleryZip(
   draft: Draft,
@@ -119,10 +148,7 @@ export async function exportGalleryZip(
     );
     onProgress?.(i + 1, draft.gallery.length);
   }
+  entries["发布信息.txt"] = strToU8(buildPublishInfoText(draft));
 
-  const zipped = await new Promise<Uint8Array>((resolve, reject) => {
-    // JPEG 已压缩,zip 用存储级即可
-    zip(entries, { level: 0 }, (err, data) => (err ? reject(err) : resolve(data)));
-  });
-  return new Blob([zipped as BlobPart], { type: "application/zip" });
+  return zipEntries(entries);
 }

@@ -24,6 +24,8 @@ export interface VideoExportSettings {
   width: number;
   height: number;
   fps: number;
+  /** 目标视频码率(bps),缺省回退 QUALITY_HIGH 主观质量档 */
+  bitrate?: number;
 }
 
 interface PreparedClip {
@@ -72,7 +74,7 @@ export async function exportVideoMp4(options: {
   signal?: AbortSignal;
 }): Promise<Blob> {
   const { draft, totalDuration, settings, onProgress, signal } = options;
-  const { width, height, fps } = settings;
+  const { width, height, fps, bitrate } = settings;
   if (draft.clips.length === 0 || totalDuration <= 0) throw new Error("时间轴为空,无法导出");
 
   const throwIfAborted = () => {
@@ -172,7 +174,7 @@ export async function exportVideoMp4(options: {
     format: new Mp4OutputFormat(),
     target: new BufferTarget(),
   });
-  const videoSource = new CanvasSource(canvas, { codec: "avc", bitrate: QUALITY_HIGH });
+  const videoSource = new CanvasSource(canvas, { codec: "avc", bitrate: bitrate ?? QUALITY_HIGH });
   output.addVideoTrack(videoSource, { frameRate: fps });
 
   let audioSource: AudioBufferSource | null = null;

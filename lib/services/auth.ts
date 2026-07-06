@@ -8,8 +8,36 @@ export type { OAuthProviderId };
  * OAuth 登录跳转到 /api/auth/{provider}/start,回调落回 /login 后
  * 由 syncFromServer() 把服务端会话同步进镜像。
  */
+export interface RegisterInput {
+  email: string;
+  username: string;
+  password: string;
+}
+
+export interface RegisterResult {
+  email: string;
+  /** 本地开发(服务端未配置邮件服务)时返回,可直接点击激活 */
+  devActivationUrl?: string;
+  /** 邮件发送失败时的提示(账号已创建,可稍后重发) */
+  mailError?: string;
+}
+
+/** 登录被拒:密码正确但邮箱未激活,前端据此展示"重发激活邮件"入口 */
+export class NeedsVerificationError extends Error {
+  readonly email?: string;
+  constructor(message: string, email?: string) {
+    super(message);
+    this.name = "NeedsVerificationError";
+    this.email = email;
+  }
+}
+
 export interface AuthService {
   login(username: string, password: string): Promise<Session>;
+  /** 注册新账号,成功后需查收激活邮件;抛错消息可直接展示 */
+  register(input: RegisterInput): Promise<RegisterResult>;
+  /** 按邮箱重发激活邮件(服务端不区分邮箱是否存在,防枚举) */
+  resendVerification(email: string): Promise<{ message: string; devActivationUrl?: string }>;
   loginWithProvider(provider: OAuthProviderId): void;
   /** 从服务端拉取会话并更新本地镜像;未登录返回 null */
   syncFromServer(): Promise<Session | null>;
@@ -35,12 +63,51 @@ class ApiAuthService implements AuthService {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
-    const data = (await res.json()) as { session?: Session; error?: string };
+    const data = (await res.json()) as {
+      session?: Session;
+      error?: string;
+      needsVerification?: boolean;
+      email?: string;
+    };
     if (!res.ok || !data.session) {
+      if (data.needsVerification) {
+        throw new NeedsVerificationError(data.error ?? "请先查收邮件激活账号", data.email);
+      }
       throw new Error(data.error ?? "登录失败");
     }
     this.setMirror(data.session);
     return data.session;
+  }
+
+  async register(input: RegisterInput): Promise<RegisterResult> {
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const data = (await res.json()) as RegisterResult & { ok?: boolean; error?: string };
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error ?? "注册失败");
+    }
+    return { email: data.email, devActivationUrl: data.devActivationUrl, mailError: data.mailError };
+  }
+
+  async resendVerification(email: string): Promise<{ message: string; devActivationUrl?: string }> {
+    const res = await fetch("/api/auth/resend-verification", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = (await res.json()) as {
+      ok?: boolean;
+      message?: string;
+      devActivationUrl?: string;
+      error?: string;
+    };
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error ?? "发送失败,请稍后重试");
+    }
+    return { message: data.message ?? "激活邮件已发送", devActivationUrl: data.devActivationUrl };
   }
 
   loginWithProvider(provider: OAuthProviderId): void {

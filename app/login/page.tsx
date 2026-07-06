@@ -2,7 +2,12 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { authService, type OAuthProviderId } from "@/lib/services/auth";
+import {
+  authService,
+  NeedsVerificationError,
+  type OAuthProviderId,
+  type RegisterResult,
+} from "@/lib/services/auth";
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   not_configured: "该登录方式尚未配置(缺少 Client ID/Secret 环境变量)",
@@ -65,13 +70,31 @@ const PROVIDER_ICONS: Record<OAuthProviderId, () => React.ReactNode> = {
   facebook: FacebookIcon,
 };
 
+const INPUT_CLASS =
+  "rounded-lg border border-zinc-300 px-3 py-2 outline-none transition-colors focus:border-[#ff2442] dark:border-zinc-700 dark:bg-zinc-800";
+
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [checking, setChecking] = useState(true);
+
+  // 登录被拒(邮箱未激活)时记录邮箱,展示"重发激活邮件"入口
+  const [needsVerifyEmail, setNeedsVerifyEmail] = useState("");
+  const [resendMessage, setResendMessage] = useState("");
+  const [resendDevUrl, setResendDevUrl] = useState("");
+  const [resending, setResending] = useState(false);
+
+  // 注册表单
+  const [regEmail, setRegEmail] = useState("");
+  const [regUsername, setRegUsername] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+  const [regConfirm, setRegConfirm] = useState("");
+  /** 注册成功后的"激活邮件已发送"状态 */
+  const [registered, setRegistered] = useState<RegisterResult | null>(null);
 
   // OAuth 回调会带着服务端会话落回本页:先同步会话,已登录则直接进首页;
   // 同时把回调携带的 error 参数展示出来
@@ -108,15 +131,72 @@ export default function LoginPage() {
     };
   }, [router]);
 
+  function switchMode(next: "login" | "register") {
+    setMode(next);
+    setError("");
+    setNeedsVerifyEmail("");
+    setResendMessage("");
+    setResendDevUrl("");
+    setRegistered(null);
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    setNeedsVerifyEmail("");
+    setResendMessage("");
+    setResendDevUrl("");
     setSubmitting(true);
     try {
       await authService.login(username, password);
       router.replace("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登录失败");
+      if (err instanceof NeedsVerificationError) {
+        setError(err.message);
+        setNeedsVerifyEmail(err.email ?? "");
+      } else {
+        setError(err instanceof Error ? err.message : "登录失败");
+      }
+      setSubmitting(false);
+    }
+  }
+
+  async function handleResend() {
+    if (!needsVerifyEmail) return;
+    setResending(true);
+    setResendMessage("");
+    setResendDevUrl("");
+    try {
+      const result = await authService.resendVerification(needsVerifyEmail);
+      setResendMessage(result.message);
+      setResendDevUrl(result.devActivationUrl ?? "");
+    } catch (err) {
+      setResendMessage(err instanceof Error ? err.message : "发送失败,请稍后重试");
+    } finally {
+      setResending(false);
+    }
+  }
+
+  async function handleRegister(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (regPassword !== regConfirm) {
+      setError("两次输入的密码不一致");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await authService.register({
+        email: regEmail,
+        username: regUsername,
+        password: regPassword,
+      });
+      setRegistered(result);
+      setRegPassword("");
+      setRegConfirm("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "注册失败");
+    } finally {
       setSubmitting(false);
     }
   }
@@ -131,64 +211,204 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-zinc-500">小红书创作者的轻量剪辑工具</p>
         </div>
 
-        <div className="flex flex-col gap-3">
-          {(Object.keys(PROVIDER_NAMES) as OAuthProviderId[]).map((provider) => {
-            const Icon = PROVIDER_ICONS[provider];
-            return (
+        <div className="mb-6 grid grid-cols-2 rounded-lg bg-zinc-100 p-1 text-sm font-medium dark:bg-zinc-800">
+          {(
+            [
+              { key: "login", label: "登录" },
+              { key: "register", label: "注册" },
+            ] as const
+          ).map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => switchMode(key)}
+              className={`rounded-md py-1.5 transition-colors ${
+                mode === key
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-900 dark:text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mode === "login" && (
+          <>
+            <div className="flex flex-col gap-3">
+              {(Object.keys(PROVIDER_NAMES) as OAuthProviderId[]).map((provider) => {
+                const Icon = PROVIDER_ICONS[provider];
+                return (
+                  <button
+                    key={provider}
+                    type="button"
+                    disabled={checking}
+                    onClick={() => authService.loginWithProvider(provider)}
+                    className="flex items-center justify-center gap-2.5 rounded-lg border border-zinc-300 py-2.5 text-sm font-medium transition-colors hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                  >
+                    <Icon />
+                    使用 {PROVIDER_NAMES[provider]} 登录
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="my-6 flex items-center gap-3 text-xs text-zinc-400">
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
+              或使用账号密码登录
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
+            </div>
+
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <label className="flex flex-col gap-1.5 text-sm">
+                <span className="font-medium">用户名或邮箱</span>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="用户名或邮箱"
+                  autoComplete="username"
+                  className={INPUT_CLASS}
+                />
+              </label>
+              <label className="flex flex-col gap-1.5 text-sm">
+                <span className="font-medium">密码</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  className={INPUT_CLASS}
+                />
+              </label>
+
+              {error && <p className="text-sm text-[#ff2442]">{error}</p>}
+
+              {needsVerifyEmail && (
+                <div className="flex flex-col gap-2 rounded-lg bg-zinc-50 p-3 text-xs text-zinc-500 dark:bg-zinc-800/60">
+                  <span>没收到激活邮件?可以重新发送到 {needsVerifyEmail}</span>
+                  {resendMessage && (
+                    <span className="text-green-600 dark:text-green-400">{resendMessage}</span>
+                  )}
+                  {resendDevUrl && (
+                    <span className="break-all">
+                      本地开发未配置邮件服务,直接点击激活:
+                      <a href={resendDevUrl} className="text-[#ff2442] underline">
+                        {resendDevUrl}
+                      </a>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={resending}
+                    className="self-start rounded-md border border-zinc-300 px-2.5 py-1 font-medium transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:hover:bg-zinc-700"
+                  >
+                    {resending ? "发送中…" : "重发激活邮件"}
+                  </button>
+                </div>
+              )}
+
               <button
-                key={provider}
-                type="button"
-                disabled={checking}
-                onClick={() => authService.loginWithProvider(provider)}
-                className="flex items-center justify-center gap-2.5 rounded-lg border border-zinc-300 py-2.5 text-sm font-medium transition-colors hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                type="submit"
+                disabled={submitting || checking}
+                className="mt-2 rounded-lg bg-[#ff2442] py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                <Icon />
-                使用 {PROVIDER_NAMES[provider]} 登录
+                {submitting ? "登录中…" : "登录"}
               </button>
-            );
-          })}
-        </div>
+            </form>
+          </>
+        )}
 
-        <div className="my-6 flex items-center gap-3 text-xs text-zinc-400">
-          <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
-          或使用账号密码登录
-          <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
-        </div>
+        {mode === "register" && registered && (
+          <div className="flex flex-col items-center gap-4 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-2xl dark:bg-green-900/40">
+              ✉
+            </span>
+            <p className="text-sm font-medium">激活邮件已发送</p>
+            <p className="text-xs text-zinc-500">
+              请查收 {registered.email} 的邮件,点击其中的链接激活账号后再登录。
+            </p>
+            {registered.mailError && (
+              <p className="text-xs text-[#ff2442]">{registered.mailError}</p>
+            )}
+            {registered.devActivationUrl && (
+              <p className="break-all text-xs text-zinc-500">
+                本地开发未配置邮件服务,直接点击激活:
+                <a href={registered.devActivationUrl} className="text-[#ff2442] underline">
+                  {registered.devActivationUrl}
+                </a>
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => switchMode("login")}
+              className="mt-2 w-full rounded-lg bg-[#ff2442] py-2.5 font-medium text-white transition-opacity hover:opacity-90"
+            >
+              去登录
+            </button>
+          </div>
+        )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="font-medium">用户名</span>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="用户名"
-              autoComplete="username"
-              className="rounded-lg border border-zinc-300 px-3 py-2 outline-none transition-colors focus:border-[#ff2442] dark:border-zinc-700 dark:bg-zinc-800"
-            />
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="font-medium">密码</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              className="rounded-lg border border-zinc-300 px-3 py-2 outline-none transition-colors focus:border-[#ff2442] dark:border-zinc-700 dark:bg-zinc-800"
-            />
-          </label>
+        {mode === "register" && !registered && (
+          <form onSubmit={handleRegister} className="flex flex-col gap-4">
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium">邮箱</span>
+              <input
+                type="email"
+                value={regEmail}
+                onChange={(e) => setRegEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium">用户名</span>
+              <input
+                type="text"
+                value={regUsername}
+                onChange={(e) => setRegUsername(e.target.value)}
+                placeholder="2-24 位字母、数字、_ 或 -"
+                autoComplete="username"
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium">密码</span>
+              <input
+                type="password"
+                value={regPassword}
+                onChange={(e) => setRegPassword(e.target.value)}
+                placeholder="至少 8 位,含字母和数字"
+                autoComplete="new-password"
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium">确认密码</span>
+              <input
+                type="password"
+                value={regConfirm}
+                onChange={(e) => setRegConfirm(e.target.value)}
+                placeholder="再次输入密码"
+                autoComplete="new-password"
+                className={INPUT_CLASS}
+              />
+            </label>
 
-          {error && <p className="text-sm text-[#ff2442]">{error}</p>}
+            {error && <p className="text-sm text-[#ff2442]">{error}</p>}
 
-          <button
-            type="submit"
-            disabled={submitting || checking}
-            className="mt-2 rounded-lg bg-[#ff2442] py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            {submitting ? "登录中…" : "登录"}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={submitting || checking}
+              className="mt-2 rounded-lg bg-[#ff2442] py-2.5 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {submitting ? "注册中…" : "注册"}
+            </button>
+          </form>
+        )}
 
         <p className="mt-6 text-center text-xs text-zinc-400">Alpha 演示版</p>
       </div>

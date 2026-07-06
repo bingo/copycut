@@ -28,10 +28,10 @@ function validate(email: string, username: string, password: string): string | n
 }
 
 export async function POST(request: Request) {
-  let email = "";
-  let username = "";
-  let password = "";
   try {
+    let email = "";
+    let username = "";
+    let password = "";
     const body = (await request.json()) as {
       email?: unknown;
       username?: unknown;
@@ -40,46 +40,58 @@ export async function POST(request: Request) {
     email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     username = typeof body.username === "string" ? body.username.trim() : "";
     password = typeof body.password === "string" ? body.password : "";
-  } catch {
-    return Response.json({ error: "请求格式错误" }, { status: 400 });
-  }
+    const invalid = validate(email, username, password);
+    if (invalid) {
+      return Response.json({ error: invalid }, { status: 400 });
+    }
+    if (await getUserByEmail(email)) {
+      return Response.json({ error: "该邮箱已注册" }, { status: 409 });
+    }
+    if (await getUserByUsername(username)) {
+      return Response.json({ error: "该用户名已被占用" }, { status: 409 });
+    }
 
-  const invalid = validate(email, username, password);
-  if (invalid) {
-    return Response.json({ error: invalid }, { status: 400 });
-  }
-  if (await getUserByEmail(email)) {
-    return Response.json({ error: "该邮箱已注册" }, { status: 409 });
-  }
-  if (await getUserByUsername(username)) {
-    return Response.json({ error: "该用户名已被占用" }, { status: 409 });
-  }
+    const user = await createUser({
+      email,
+      username,
+      passwordHash: hashPassword(password),
+      emailVerified: false,
+      identities: [`password:${username}`],
+    });
 
-  const user = await createUser({
-    email,
-    username,
-    passwordHash: hashPassword(password),
-    emailVerified: false,
-    identities: [`password:${username}`],
-  });
-
-  try {
-    const mail = await sendActivationEmail(user, request.url);
+    try {
+      const mail = await sendActivationEmail(user, request.url);
+      return Response.json(
+        {
+          ok: true,
+          email,
+          // 本地开发(未配置 RESEND_API_KEY)时直接返回激活链接
+          devActivationUrl: mail.devActivationUrl,
+        },
+        { status: 201 }
+      );
+    } catch (err) {
+      // 账号已创建但邮件发送失败,引导用户走"重发激活邮件"
+      const message = err instanceof Error ? err.message : "激活邮件发送失败";
+      return Response.json(
+        { ok: true, email, mailError: `${message},可稍后在登录页重发` },
+        { status: 201 }
+      );
+    }
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      return Response.json({ error: "请求格式错误" }, { status: 400 });
+    }
+    const message = err instanceof Error ? err.message : "注册失败";
+    const isDatabaseConfigError = message.includes("DATABASE_URL");
+    console.error(`[auth/register] ${message}`);
     return Response.json(
       {
-        ok: true,
-        email,
-        // 本地开发(未配置 RESEND_API_KEY)时直接返回激活链接
-        devActivationUrl: mail.devActivationUrl,
+        error: isDatabaseConfigError
+          ? "用户数据库尚未配置,请先配置生产环境 DATABASE_URL"
+          : "注册失败,请稍后重试",
       },
-      { status: 201 }
-    );
-  } catch (err) {
-    // 账号已创建但邮件发送失败,引导用户走"重发激活邮件"
-    const message = err instanceof Error ? err.message : "激活邮件发送失败";
-    return Response.json(
-      { ok: true, email, mailError: `${message},可稍后在登录页重发` },
-      { status: 201 }
+      { status: isDatabaseConfigError ? 503 : 500 }
     );
   }
 }

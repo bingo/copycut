@@ -53,6 +53,18 @@ export function ownerKeyOf(session: Session): string {
 
 const SESSION_KEY = "copycut.session";
 
+async function readJson<T extends object>(res: Response): Promise<T> {
+  const text = await res.text();
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return {
+      error: res.ok ? "服务器返回格式异常" : `服务器返回非 JSON 响应(${res.status})`,
+    } as T;
+  }
+}
+
 class ApiAuthService implements AuthService {
   async login(username: string, password: string): Promise<Session> {
     if (!username.trim() || !password.trim()) {
@@ -63,12 +75,12 @@ class ApiAuthService implements AuthService {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
-    const data = (await res.json()) as {
+    const data = await readJson<{
       session?: Session;
       error?: string;
       needsVerification?: boolean;
       email?: string;
-    };
+    }>(res);
     if (!res.ok || !data.session) {
       if (data.needsVerification) {
         throw new NeedsVerificationError(data.error ?? "请先查收邮件激活账号", data.email);
@@ -85,7 +97,7 @@ class ApiAuthService implements AuthService {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     });
-    const data = (await res.json()) as RegisterResult & { ok?: boolean; error?: string };
+    const data = await readJson<RegisterResult & { ok?: boolean; error?: string }>(res);
     if (!res.ok || !data.ok) {
       throw new Error(data.error ?? "注册失败");
     }
@@ -98,12 +110,12 @@ class ApiAuthService implements AuthService {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
-    const data = (await res.json()) as {
+    const data = await readJson<{
       ok?: boolean;
       message?: string;
       devActivationUrl?: string;
       error?: string;
-    };
+    }>(res);
     if (!res.ok || !data.ok) {
       throw new Error(data.error ?? "发送失败,请稍后重试");
     }
@@ -117,7 +129,7 @@ class ApiAuthService implements AuthService {
   async syncFromServer(): Promise<Session | null> {
     const res = await fetch("/api/auth/session");
     if (!res.ok) return null;
-    const data = (await res.json()) as { session?: Session | null };
+    const data = await readJson<{ session?: Session | null }>(res);
     if (data.session) {
       this.setMirror(data.session);
       return data.session;

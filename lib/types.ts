@@ -192,6 +192,8 @@ export type OAuthProviderId = Exclude<AuthProvider, "password">;
 export interface Session {
   username: string;
   loginAt: number;
+  /** 服务端用户记录 id(lib/server/users.ts);旧会话/未建档时为空 */
+  userId?: string;
   /** 登录方式;旧 localStorage 会话没有此字段,视为 password */
   provider?: AuthProvider;
   name?: string;

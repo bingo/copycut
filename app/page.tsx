@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthGuard from "@/components/AuthGuard";
 import NewProjectModal from "@/components/NewProjectModal";
@@ -59,6 +60,12 @@ function DraftList() {
           <span className="text-sm text-zinc-500">
             {authService.getSession()?.username}
           </span>
+          <Link
+            href="/settings"
+            className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+          >
+            设置
+          </Link>
           <button
             type="button"
             onClick={handleLogout}

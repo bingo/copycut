@@ -6,9 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:init": "node scripts/init-users-db.mjs",
+    "db:migrate:users": "node scripts/migrate-users-to-neon.mjs"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "fflate": "^0.8.3",
     "idb": "^8.0.3",
     "mediabunny": "^1.50.6",

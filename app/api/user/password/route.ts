@@ -47,6 +47,6 @@ export async function POST(request: Request) {
   const invalid = validateNewPassword(newPassword);
   if (invalid) return Response.json({ error: invalid }, { status: 400 });
 
-  updateUser(user.id, { passwordHash: hashPassword(newPassword) });
+  await updateUser(user.id, { passwordHash: hashPassword(newPassword) });
   return Response.json({ ok: true });
 }

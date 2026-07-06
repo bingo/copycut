@@ -38,8 +38,8 @@ export async function POST(request: Request) {
 
   // 含 @ 视为邮箱,否则视为用户名(注册时用户名禁止含 @)
   const user = account.includes("@")
-    ? getUserByEmail(account)
-    : getUserByUsername(account);
+    ? await getUserByEmail(account)
+    : await getUserByUsername(account);
 
   // 无论用户是否存在都执行一次 scrypt 校验;纯 OAuth 账号无密码,同样空跑
   const passwordOk = verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);

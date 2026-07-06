@@ -106,7 +106,7 @@ export async function PATCH(request: Request) {
         patch.identities = [...user.identities, identity];
       }
     }
-    updated = updateUser(user.id, patch);
+    updated = await updateUser(user.id, patch);
   } catch (err) {
     // 唯一性冲突等业务错误(如"该用户名已被占用")
     return Response.json(

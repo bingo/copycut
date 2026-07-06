@@ -44,5 +44,5 @@ export function sanitizeUser(user: UserRecord): SafeUser {
 export async function requireUser(): Promise<{ session: Session; user: UserRecord } | null> {
   const session = await readSession();
   if (!session) return null;
-  return { session, user: getOrCreateUserForSession(session) };
+  return { session, user: await getOrCreateUserForSession(session) };
 }

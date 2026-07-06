@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     return Response.json({ error: "缺少激活令牌" }, { status: 400 });
   }
 
-  const user = getUserByVerificationToken(token);
+  const user = await getUserByVerificationToken(token);
   if (!user) {
     return Response.json(
       { error: "激活链接无效,可能已被使用或已重新发送过激活邮件" },
@@ -28,6 +28,6 @@ export async function GET(request: Request) {
     );
   }
 
-  updateUser(user.id, { emailVerified: true, verification: undefined });
+  await updateUser(user.id, { emailVerified: true, verification: undefined });
   return Response.json({ ok: true, email: user.email });
 }

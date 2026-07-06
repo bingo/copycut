@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { updateUser, type UserRecord } from "./users";
+import { hashVerificationToken, updateUser, type UserRecord } from "./users";
 
 /**
  * 激活邮件发送:配置了 RESEND_API_KEY 时直接 fetch Resend HTTP API
@@ -22,21 +22,34 @@ export interface ActivationResult {
   devActivationUrl?: string;
 }
 
+export function getAppOrigin(requestUrl: string): string {
+  const configured = process.env.APP_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+
+  const vercelUrl =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ?? process.env.VERCEL_URL?.trim();
+  if (vercelUrl) {
+    return `https://${vercelUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
+  }
+
+  return new URL(requestUrl).origin;
+}
+
 /**
  * 为用户签发新的激活 token(覆盖旧 token)并发送激活邮件。
  * @param origin 站点源地址(如 http://localhost:3000),用于拼激活链接
  */
 export async function sendActivationEmail(
   user: UserRecord,
-  origin: string
+  requestUrl: string
 ): Promise<ActivationResult> {
   if (!user.email) throw new Error("该账号没有邮箱,无法发送激活邮件");
 
   const token = randomBytes(32).toString("hex");
-  updateUser(user.id, {
-    verification: { token, expiresAt: Date.now() + TOKEN_TTL_MS },
+  await updateUser(user.id, {
+    verification: { tokenHash: hashVerificationToken(token), expiresAt: Date.now() + TOKEN_TTL_MS },
   });
-  const activationUrl = `${origin}/verify?token=${token}`;
+  const activationUrl = `${getAppOrigin(requestUrl)}/verify?token=${token}`;
 
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {

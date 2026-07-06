@@ -48,14 +48,14 @@ export async function POST(request: Request) {
   if (invalid) {
     return Response.json({ error: invalid }, { status: 400 });
   }
-  if (getUserByEmail(email)) {
+  if (await getUserByEmail(email)) {
     return Response.json({ error: "该邮箱已注册" }, { status: 409 });
   }
-  if (getUserByUsername(username)) {
+  if (await getUserByUsername(username)) {
     return Response.json({ error: "该用户名已被占用" }, { status: 409 });
   }
 
-  const user = createUser({
+  const user = await createUser({
     email,
     username,
     passwordHash: hashPassword(password),
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
   });
 
   try {
-    const mail = await sendActivationEmail(user, new URL(request.url).origin);
+    const mail = await sendActivationEmail(user, request.url);
     return Response.json(
       {
         ok: true,

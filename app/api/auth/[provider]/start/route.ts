@@ -7,6 +7,7 @@ import {
   isOAuthProvider,
   isProviderConfigured,
 } from "@/lib/server/oauth";
+import { getAppOrigin } from "@/lib/server/url";
 
 export async function GET(
   request: NextRequest,
@@ -17,7 +18,7 @@ export async function GET(
     return Response.json({ error: "未知的登录方式" }, { status: 404 });
   }
 
-  const origin = request.nextUrl.origin;
+  const origin = getAppOrigin(request.url);
   if (!isProviderConfigured(provider)) {
     return Response.redirect(
       `${origin}/login?error=not_configured&provider=${provider}`,

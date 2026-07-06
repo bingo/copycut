@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { hashVerificationToken, updateUser, type UserRecord } from "./users";
+import { getAppOrigin } from "./url";
 
 /**
  * 激活邮件发送:
@@ -33,19 +34,6 @@ interface ActivationEmailContent {
   subject: string;
   html: string;
   text: string;
-}
-
-export function getAppOrigin(requestUrl: string): string {
-  const configured = process.env.APP_URL?.trim();
-  if (configured) return configured.replace(/\/+$/, "");
-
-  const vercelUrl =
-    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ?? process.env.VERCEL_URL?.trim();
-  if (vercelUrl) {
-    return `https://${vercelUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
-  }
-
-  return new URL(requestUrl).origin;
 }
 
 /**

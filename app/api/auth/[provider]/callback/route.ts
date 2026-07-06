@@ -7,6 +7,7 @@ import {
   profileToSession,
 } from "@/lib/server/oauth";
 import { createSession } from "@/lib/server/session";
+import { getAppOrigin } from "@/lib/server/url";
 import { getOrCreateUserForSession } from "@/lib/server/users";
 
 export async function GET(
@@ -14,7 +15,7 @@ export async function GET(
   { params }: { params: Promise<{ provider: string }> }
 ) {
   const { provider } = await params;
-  const origin = request.nextUrl.origin;
+  const origin = getAppOrigin(request.url);
   const fail = (error: string) =>
     Response.redirect(`${origin}/login?error=${error}&provider=${provider}`, 302);
 
@@ -40,20 +41,16 @@ export async function GET(
   try {
     const redirectUri = `${origin}/api/auth/${provider}/callback`;
     const profile = await exchangeCodeForProfile(provider, code, redirectUri);
-    const session = profileToSession(provider, profile);
-    if (provider === "facebook") {
-      const user = await getOrCreateUserForSession(session);
-      await createSession({
-        ...session,
-        userId: user.id,
-        username: user.username,
-        name: user.name,
-        email: user.email,
-        avatarUrl: user.avatarUrl,
-      });
-    } else {
-      await createSession(session);
-    }
+    const oauthSession = profileToSession(provider, profile);
+    const user = await getOrCreateUserForSession(oauthSession);
+    await createSession({
+      ...oauthSession,
+      userId: user.id,
+      username: user.username,
+      name: user.name,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+    });
   } catch (err) {
     console.error(`[auth] ${provider} 回调失败:`, err);
     return fail("oauth_exchange_failed");

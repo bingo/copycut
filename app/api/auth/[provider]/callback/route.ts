@@ -7,6 +7,7 @@ import {
   profileToSession,
 } from "@/lib/server/oauth";
 import { createSession } from "@/lib/server/session";
+import { getOrCreateUserForSession } from "@/lib/server/users";
 
 export async function GET(
   request: NextRequest,
@@ -39,7 +40,20 @@ export async function GET(
   try {
     const redirectUri = `${origin}/api/auth/${provider}/callback`;
     const profile = await exchangeCodeForProfile(provider, code, redirectUri);
-    await createSession(profileToSession(provider, profile));
+    const session = profileToSession(provider, profile);
+    if (provider === "facebook") {
+      const user = await getOrCreateUserForSession(session);
+      await createSession({
+        ...session,
+        userId: user.id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+      });
+    } else {
+      await createSession(session);
+    }
   } catch (err) {
     console.error(`[auth] ${provider} 回调失败:`, err);
     return fail("oauth_exchange_failed");

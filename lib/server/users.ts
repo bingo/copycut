@@ -10,16 +10,6 @@ import { ownerKeyOf } from "../services/auth";
  * 部署到无持久磁盘的环境(如 Vercel)前需替换为数据库。
  */
 
-export interface XiaohongshuAccount {
-  /** 小红书昵称(展示用) */
-  nickname: string;
-  /** 小红书用户 id,选填 */
-  xhsUserId?: string;
-  /** 登录态凭证(cookie 等),仅服务端保存,永不下发客户端 */
-  credential?: string;
-  boundAt: number;
-}
-
 export interface UserRecord {
   id: string;
   /** 小写归一;OAuth 用户可能没有邮箱 */
@@ -37,7 +27,6 @@ export interface UserRecord {
   verification?: { token: string; expiresAt: number };
   /** 关联的登录身份,格式 "provider:username",与草稿 ownerKey 同构 */
   identities: string[];
-  xiaohongshu?: XiaohongshuAccount;
   createdAt: number;
   updatedAt: number;
 }

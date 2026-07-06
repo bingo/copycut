@@ -5,16 +5,8 @@ import { getOrCreateUserForSession, type UserRecord } from "./users";
 /**
  * 设置页等"当前用户"API 的公共辅助:
  * 由会话解析用户记录,并把 UserRecord 裁剪成可下发客户端的安全形态
- * (剔除 passwordHash、verification、小红书凭证等敏感字段)。
+ * (剔除 passwordHash、verification 等敏感字段)。
  */
-
-/** 小红书绑定信息的安全形态:凭证永不下发,仅告知是否已填 */
-export interface SafeXiaohongshu {
-  nickname: string;
-  xhsUserId?: string;
-  boundAt: number;
-  hasCredential: boolean;
-}
 
 /** 用户资料的安全形态(下发客户端用) */
 export interface SafeUser {
@@ -28,7 +20,6 @@ export interface SafeUser {
   identities: string[];
   /** 是否已设置密码(纯 OAuth 用户为 false,可直接设置首个密码) */
   hasPassword: boolean;
-  xiaohongshu?: SafeXiaohongshu;
   createdAt: number;
   updatedAt: number;
 }
@@ -44,14 +35,6 @@ export function sanitizeUser(user: UserRecord): SafeUser {
     emailVerified: user.emailVerified,
     identities: user.identities,
     hasPassword: Boolean(user.passwordHash),
-    xiaohongshu: user.xiaohongshu
-      ? {
-          nickname: user.xiaohongshu.nickname,
-          xhsUserId: user.xiaohongshu.xhsUserId,
-          boundAt: user.xiaohongshu.boundAt,
-          hasCredential: Boolean(user.xiaohongshu.credential),
-        }
-      : undefined,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };

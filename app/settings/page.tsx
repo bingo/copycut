@@ -9,7 +9,7 @@ import type { SafeUser } from "@/lib/server/current-user";
 import type { AuthProvider } from "@/lib/types";
 
 /**
- * 用户设置页:基础信息 / 账号安全 / 小红书账号 三个分区,
+ * 用户设置页:基础信息 / 账号安全 两个分区,
  * 数据来自 /api/user/* 系列接口,每个分区独立保存。
  */
 
@@ -23,12 +23,11 @@ const PROVIDER_LABELS: Record<AuthProvider, string> = {
 const USERNAME_WARNING =
   "修改用户名会使历史草稿与新账号脱钩,旧草稿将不再出现在草稿列表中";
 
-type SectionId = "profile" | "security" | "xiaohongshu";
+type SectionId = "profile" | "security";
 
 const SECTIONS: { id: SectionId; label: string }[] = [
   { id: "profile", label: "基础信息" },
   { id: "security", label: "账号安全" },
-  { id: "xiaohongshu", label: "小红书账号" },
 ];
 
 /** 分区保存结果提示 */
@@ -312,162 +311,6 @@ function SecuritySection({
   );
 }
 
-function XiaohongshuSection({
-  user,
-  onUpdated,
-}: {
-  user: SafeUser;
-  onUpdated: (user: SafeUser) => void;
-}) {
-  const [nickname, setNickname] = useState("");
-  const [xhsUserId, setXhsUserId] = useState("");
-  const [credential, setCredential] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback>(null);
-
-  const bound = user.xiaohongshu;
-
-  async function handleBind(e: FormEvent) {
-    e.preventDefault();
-    setFeedback(null);
-    if (!nickname.trim()) {
-      setFeedback({ type: "error", text: "请填写小红书昵称" });
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await fetch("/api/user/xiaohongshu", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname, xhsUserId, credential }),
-      });
-      if (!res.ok) {
-        setFeedback({ type: "error", text: await readError(res, "绑定失败,请重试") });
-        return;
-      }
-      const data = (await res.json()) as { user: SafeUser };
-      setNickname("");
-      setXhsUserId("");
-      setCredential("");
-      onUpdated(data.user);
-      setFeedback({ type: "success", text: "小红书账号已绑定" });
-    } catch {
-      setFeedback({ type: "error", text: "网络异常,绑定失败" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleUnbind() {
-    setFeedback(null);
-    if (!window.confirm("确定解绑小红书账号吗?保存的登录凭证将一并删除。")) return;
-    setSaving(true);
-    try {
-      const res = await fetch("/api/user/xiaohongshu", { method: "DELETE" });
-      if (!res.ok) {
-        setFeedback({ type: "error", text: await readError(res, "解绑失败,请重试") });
-        return;
-      }
-      const data = (await res.json()) as { user: SafeUser };
-      onUpdated(data.user);
-      setFeedback({ type: "success", text: "已解绑小红书账号" });
-    } catch {
-      setFeedback({ type: "error", text: "网络异常,解绑失败" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (bound) {
-    return (
-      <div className={`${cardClass} flex flex-col gap-4`}>
-        <h3 className="text-base font-semibold">小红书账号</h3>
-        <div className="flex flex-col gap-2 rounded-xl bg-zinc-50 p-4 text-sm dark:bg-zinc-800/50">
-          <p>
-            <span className="text-zinc-400">昵称:</span>
-            <span className="font-medium">{bound.nickname}</span>
-          </p>
-          {bound.xhsUserId && (
-            <p>
-              <span className="text-zinc-400">小红书号:</span>
-              {bound.xhsUserId}
-            </p>
-          )}
-          <p>
-            <span className="text-zinc-400">绑定时间:</span>
-            {new Date(bound.boundAt).toLocaleString("zh-CN")}
-          </p>
-          <p>
-            <span className="text-zinc-400">登录凭证:</span>
-            {bound.hasCredential ? "已保存(仅服务端)" : "未填写"}
-          </p>
-        </div>
-        <FeedbackText feedback={feedback} />
-        <button
-          type="button"
-          disabled={saving}
-          onClick={handleUnbind}
-          className="self-start rounded-lg border border-zinc-300 px-5 py-2 text-sm font-medium text-zinc-600 transition-colors hover:border-[#ff2442] hover:text-[#ff2442] disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
-        >
-          {saving ? "解绑中…" : "解绑"}
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <form onSubmit={handleBind} className={`${cardClass} flex flex-col gap-4`}>
-      <h3 className="text-base font-semibold">绑定小红书账号</h3>
-      <p className="text-sm text-zinc-500">
-        绑定后可为后续&ldquo;直接发布到小红书&rdquo;做准备。
-      </p>
-
-      <label className="flex flex-col gap-1.5 text-sm">
-        <span className="font-medium">小红书昵称</span>
-        <input
-          type="text"
-          value={nickname}
-          onChange={(e) => setNickname(e.target.value)}
-          placeholder="小红书上的昵称"
-          maxLength={30}
-          className={inputClass}
-        />
-      </label>
-
-      <label className="flex flex-col gap-1.5 text-sm">
-        <span className="font-medium">小红书号(选填)</span>
-        <input
-          type="text"
-          value={xhsUserId}
-          onChange={(e) => setXhsUserId(e.target.value)}
-          placeholder="个人主页的小红书号"
-          className={inputClass}
-        />
-      </label>
-
-      <label className="flex flex-col gap-1.5 text-sm">
-        <span className="font-medium">登录凭证(选填)</span>
-        <input
-          type="password"
-          value={credential}
-          onChange={(e) => setCredential(e.target.value)}
-          placeholder="Cookie 等登录凭证"
-          autoComplete="off"
-          className={inputClass}
-        />
-        <span className="text-xs text-zinc-400">
-          用于后续直接发布,仅保存在服务端,不会回传到浏览器。
-        </span>
-      </label>
-
-      <FeedbackText feedback={feedback} />
-      <button type="submit" disabled={saving} className={saveButtonClass}>
-        {saving ? "绑定中…" : "绑定"}
-      </button>
-    </form>
-  );
-}
-
 function SettingsContent() {
   const router = useRouter();
   const [user, setUser] = useState<SafeUser | null>(null);
@@ -547,9 +390,6 @@ function SettingsContent() {
               hasPassword={user.hasPassword}
               onPasswordSet={() => setUser({ ...user, hasPassword: true })}
             />
-          )}
-          {user && active === "xiaohongshu" && (
-            <XiaohongshuSection user={user} onUpdated={setUser} />
           )}
         </div>
       </main>

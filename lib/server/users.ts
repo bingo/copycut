@@ -104,6 +104,18 @@ export function getUserByIdentity(identity: string): UserRecord | null {
   return load().find((u) => u.identities.includes(identity)) ?? null;
 }
 
+/** 按邮箱验证 token 查找用户(注册激活用);timingSafeEqual 比较防时序泄露 */
+export function getUserByVerificationToken(token: string): UserRecord | null {
+  const target = Buffer.from(token);
+  return (
+    load().find((u) => {
+      if (!u.verification) return false;
+      const stored = Buffer.from(u.verification.token);
+      return stored.length === target.length && timingSafeEqual(stored, target);
+    }) ?? null
+  );
+}
+
 export function createUser(
   input: Omit<UserRecord, "id" | "createdAt" | "updatedAt">
 ): UserRecord {

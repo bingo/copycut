@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { getTransition } from "@/lib/data/transitions";
+import { textStyleService } from "@/lib/services/user-templates";
 import type { TextOverlay } from "@/lib/types";
 import { Field, FontSelect, OptionalColorField } from "./fields";
 import type { EditorState } from "./useEditorState";
@@ -8,6 +10,10 @@ import type { EditorState } from "./useEditorState";
 /** 右侧属性面板:按选中对象(片段/文字)展示可编辑属性 */
 export default function PropertiesPanel({ editor }: { editor: EditorState }) {
   const { draft, clips, selection, apply, deleteClip, setSelection, totalDuration } = editor;
+  /** T1 存为我的样式:内联命名输入 */
+  const [namingStyle, setNamingStyle] = useState(false);
+  const [styleName, setStyleName] = useState("");
+  const [styleSaved, setStyleSaved] = useState(false);
   if (!draft) return null;
 
   const selectedClip =
@@ -20,6 +26,24 @@ export default function PropertiesPanel({ editor }: { editor: EditorState }) {
     apply({
       texts: draft.texts.map((t) => (t.id === selectedText.id ? { ...t, ...patch } : t)),
     });
+  }
+
+  /** T1 把当前文字的样式(不含内容/位置/时间)存入个人样式库 */
+  function saveTextStyle() {
+    const name = styleName.trim();
+    if (!name || !selectedText) return;
+    textStyleService.save(name, {
+      fontSize: selectedText.fontSize,
+      color: selectedText.color,
+      fontWeight: selectedText.fontWeight,
+      fontFamily: selectedText.fontFamily,
+      background: selectedText.background,
+      borderColor: selectedText.borderColor,
+    });
+    setNamingStyle(false);
+    setStyleName("");
+    setStyleSaved(true);
+    setTimeout(() => setStyleSaved(false), 2000);
   }
 
   return (
@@ -135,13 +159,56 @@ export default function PropertiesPanel({ editor }: { editor: EditorState }) {
               onChange={(v) => updateText({ borderColor: v })}
             />
           </div>
+          {/* T1 样式沉淀:存入个人样式库,文字面板「我的」分类里跨草稿复用 */}
+          {namingStyle ? (
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                value={styleName}
+                onChange={(e) => setStyleName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveTextStyle();
+                  if (e.key === "Escape") setNamingStyle(false);
+                }}
+                placeholder="给这套样式起个名字"
+                autoFocus
+                className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 outline-none focus:border-[#ff2442]"
+              />
+              <button
+                type="button"
+                onClick={saveTextStyle}
+                disabled={!styleName.trim()}
+                className="rounded bg-[#ff2442] px-2 py-1 text-xs text-white hover:opacity-90 disabled:opacity-40"
+              >
+                保存
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setNamingStyle(true);
+                setStyleName("");
+              }}
+              className="mt-2 rounded-lg border border-zinc-700 py-1.5 text-xs text-zinc-300 hover:border-zinc-500"
+            >
+              {styleSaved ? "✓ 已存入「我的」样式" : "存为我的样式"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => editor.duplicateSelected()}
+            className="rounded-lg border border-zinc-700 py-1.5 text-xs text-zinc-300 hover:border-zinc-500"
+            title="⌘/Ctrl+D"
+          >
+            复制一份
+          </button>
           <button
             type="button"
             onClick={() => {
               apply({ texts: draft.texts.filter((t) => t.id !== selectedText.id) });
               setSelection(null);
             }}
-            className="mt-2 rounded-lg border border-red-900 py-1.5 text-xs text-red-400 hover:bg-red-950/40"
+            className="rounded-lg border border-red-900 py-1.5 text-xs text-red-400 hover:bg-red-950/40"
           >
             删除文字
           </button>

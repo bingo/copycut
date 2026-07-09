@@ -58,8 +58,10 @@ export function useEditorState(id: string) {
 
   const undoStack = useRef<EditorSnapshot[]>([]);
   const redoStack = useRef<EditorSnapshot[]>([]);
-  /** F-65 编辑器内部剪贴板(复制的片段快照,不跨草稿) */
-  const clipClipboard = useRef<Clip | null>(null);
+  /** F-65/T1 编辑器内部剪贴板(片段或文字快照,不跨草稿) */
+  const clipboard = useRef<
+    { kind: "clip"; clip: Clip } | { kind: "text"; text: TextOverlay } | null
+  >(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftRef = useRef<Draft | null>(null);
 
@@ -292,20 +294,46 @@ export function useEditorState(id: string) {
     [apply]
   );
 
-  // F-65 复制选中片段到内部剪贴板
-  const copySelectedClip = useCallback(() => {
+  // F-65/T1 复制选中对象(片段或文字)到内部剪贴板
+  const copySelected = useCallback(() => {
     const current = draftRef.current;
-    if (!current || selection?.type !== "clip") return;
-    const clip = current.clips.find((c) => c.id === selection.id);
-    if (clip) clipClipboard.current = { ...clip };
+    if (!current || !selection) return;
+    if (selection.type === "clip") {
+      const clip = current.clips.find((c) => c.id === selection.id);
+      if (clip) clipboard.current = { kind: "clip", clip: { ...clip } };
+    } else {
+      const text = current.texts.find((t) => t.id === selection.id);
+      if (text) clipboard.current = { kind: "text", text: { ...text } };
+    }
   }, [selection]);
 
-  // F-65 粘贴片段:插到选中片段之后,无选中则追加到末尾
-  const pasteClip = useCallback(() => {
+  /** T1 粘贴文字:新 id + 位置偏移避免完全重叠,保留样式与时间范围 */
+  const pasteText = useCallback(
+    (source: TextOverlay) => {
+      const current = draftRef.current;
+      if (!current) return;
+      const text: TextOverlay = {
+        ...source,
+        id: crypto.randomUUID(),
+        x: Math.min(98, source.x + 3),
+        y: Math.min(98, source.y + 3),
+      };
+      apply({ texts: [...current.texts, text] });
+      setSelection({ type: "text", id: text.id });
+    },
+    [apply]
+  );
+
+  // F-65/T1 粘贴:片段插到选中片段之后(无选中追加到末尾),文字加为新图层
+  const paste = useCallback(() => {
     const current = draftRef.current;
-    const copied = clipClipboard.current;
+    const copied = clipboard.current;
     if (!current || !copied) return;
-    const clip: Clip = { ...copied, id: crypto.randomUUID(), transitionAfter: undefined };
+    if (copied.kind === "text") {
+      pasteText(copied.text);
+      return;
+    }
+    const clip: Clip = { ...copied.clip, id: crypto.randomUUID(), transitionAfter: undefined };
     const at =
       selection?.type === "clip"
         ? current.clips.findIndex((c) => c.id === selection.id)
@@ -314,7 +342,26 @@ export function useEditorState(id: string) {
     next.splice(at === -1 ? next.length : at + 1, 0, clip);
     apply({ clips: next });
     setSelection({ type: "clip", id: clip.id });
-  }, [apply, selection]);
+  }, [apply, selection, pasteText]);
+
+  // T1 ⌘/Ctrl+D 原位复制选中对象,不经过剪贴板
+  const duplicateSelected = useCallback(() => {
+    const current = draftRef.current;
+    if (!current || !selection) return;
+    if (selection.type === "text") {
+      const text = current.texts.find((t) => t.id === selection.id);
+      if (text) pasteText(text);
+      return;
+    }
+    const source = current.clips.find((c) => c.id === selection.id);
+    if (!source) return;
+    const clip: Clip = { ...source, id: crypto.randomUUID(), transitionAfter: undefined };
+    const at = current.clips.findIndex((c) => c.id === selection.id);
+    const next = [...current.clips];
+    next.splice(at + 1, 0, clip);
+    apply({ clips: next });
+    setSelection({ type: "clip", id: clip.id });
+  }, [apply, selection, pasteText]);
 
   // F-65 删除当前选中(片段或文字),Delete 快捷键与时间轴删除按钮共用
   const deleteSelected = useCallback(() => {
@@ -366,8 +413,9 @@ export function useEditorState(id: string) {
     splitAtPlayhead,
     trimClip,
     deleteClip,
-    copySelectedClip,
-    pasteClip,
+    copySelected,
+    paste,
+    duplicateSelected,
     deleteSelected,
     reorderClip,
   };

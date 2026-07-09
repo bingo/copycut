@@ -75,14 +75,21 @@ export function useEditorShortcuts(editor: EditorState, options: { modalOpen: bo
       if (meta && e.key.toLowerCase() === "c") {
         // 页面上有选中文本时保留浏览器原生复制
         if (window.getSelection()?.toString()) return;
-        if (ed.selection?.type !== "clip") return;
+        if (!ed.selection) return;
         e.preventDefault();
-        ed.copySelectedClip();
+        ed.copySelected();
         return;
       }
       if (meta && e.key.toLowerCase() === "v") {
         e.preventDefault();
-        ed.pasteClip();
+        ed.paste();
+        return;
+      }
+      // T1 ⌘/Ctrl+D 原位复制选中片段/文字
+      if (meta && e.key.toLowerCase() === "d") {
+        if (!ed.selection) return;
+        e.preventDefault();
+        ed.duplicateSelected();
         return;
       }
       if (meta) return;

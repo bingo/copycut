@@ -20,8 +20,9 @@ export default function ShortcutsModal({ onClose }: { onClose: () => void }) {
       items: [
         [["S"], "在播放头处分割片段"],
         [["Delete"], "删除选中片段 / 文字"],
-        [[mod, "C"], "复制选中片段"],
-        [[mod, "V"], "粘贴片段"],
+        [[mod, "C"], "复制选中片段 / 文字"],
+        [[mod, "V"], "粘贴片段 / 文字"],
+        [[mod, "D"], "原位复制选中对象"],
       ],
     },
     {

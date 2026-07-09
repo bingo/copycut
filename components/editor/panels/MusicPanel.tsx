@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MUSIC_CATEGORIES, MUSIC_MOODS, MUSIC_TRACKS, type MusicMood } from "@/lib/data/music";
+import { MUSIC_CATEGORIES, MUSIC_MOODS, MUSIC_TRACKS, getTrack, type MusicMood } from "@/lib/data/music";
+import { musicPresetService, type UserAsset } from "@/lib/services/user-templates";
 import { formatDuration } from "@/lib/media";
+import type { MusicConfig } from "@/lib/types";
 import { CategoryTabs } from "./FilterPanel";
 import type { EditorState } from "./../useEditorState";
 
-/** F-17 背景音乐库(真实音频试听/添加)+ F-18 音量与淡入淡出 + F-64 氛围筛选 */
+/** F-17 背景音乐库(真实音频试听/添加)+ F-18 音量与淡入淡出 + F-64 氛围筛选 + T1 我的预设 */
 export default function MusicPanel({ editor }: { editor: EditorState }) {
   const { draft, apply, pushHistory } = editor;
   const [category, setCategory] = useState<string>(MUSIC_CATEGORIES[0]);
@@ -14,6 +16,18 @@ export default function MusicPanel({ editor }: { editor: EditorState }) {
   const [mood, setMood] = useState<MusicMood | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  /** T1 我的音乐预设(曲目+音量+淡入淡出,跨草稿) */
+  const [presets, setPresets] = useState<UserAsset<MusicConfig>[]>(() =>
+    musicPresetService.list()
+  );
+  const [namingPreset, setNamingPreset] = useState(false);
+  const [presetName, setPresetName] = useState("");
+
+  // 保存/删除后经 store 订阅刷新列表
+  useEffect(
+    () => musicPresetService.subscribe(() => setPresets(musicPresetService.list())),
+    []
+  );
 
   // 卸载面板时停掉试听
   useEffect(
@@ -122,6 +136,94 @@ export default function MusicPanel({ editor }: { editor: EditorState }) {
           曲库为 CC0 公有领域音乐,可免版权商用
         </p>
       </div>
+
+      {/* T1 我的预设:一键套用曲目+音量+淡入淡出组合 */}
+      {(presets.length > 0 || music) && (
+        <div className="border-t border-zinc-800 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs text-zinc-500">我的预设(跨草稿复用)</p>
+            {music &&
+              (namingPreset ? null : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNamingPreset(true);
+                    setPresetName(getTrack(music.trackId)?.name ?? "");
+                  }}
+                  className="text-xs text-[#ff2442] hover:opacity-80"
+                >
+                  + 存为预设
+                </button>
+              ))}
+          </div>
+          {namingPreset && music && (
+            <div className="mb-2 flex items-center gap-2">
+              <input
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && presetName.trim()) {
+                    musicPresetService.save(presetName.trim(), music);
+                    setNamingPreset(false);
+                  }
+                  if (e.key === "Escape") setNamingPreset(false);
+                }}
+                placeholder="预设名称"
+                autoFocus
+                className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 outline-none focus:border-[#ff2442]"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (!presetName.trim()) return;
+                  musicPresetService.save(presetName.trim(), music);
+                  setNamingPreset(false);
+                }}
+                disabled={!presetName.trim()}
+                className="rounded bg-[#ff2442] px-2 py-1 text-xs text-white hover:opacity-90 disabled:opacity-40"
+              >
+                保存
+              </button>
+            </div>
+          )}
+          {presets.map((p) => {
+            const track = getTrack(p.data.trackId);
+            return (
+              <div
+                key={p.id}
+                className="mb-1.5 flex items-center gap-2 rounded-lg border border-zinc-800 px-2 py-1.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs text-zinc-300" title={p.name}>
+                    {p.name}
+                  </p>
+                  <p className="truncate text-[10px] text-zinc-600">
+                    {track?.name ?? "曲目已失效"} · {p.data.volume}%
+                    {p.data.fadeIn ? " · 淡入" : ""}
+                    {p.data.fadeOut ? " · 淡出" : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={!track}
+                  onClick={() => apply({ music: { ...p.data } })}
+                  className="shrink-0 rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-300 hover:border-zinc-500 disabled:opacity-40"
+                >
+                  套用
+                </button>
+                <button
+                  type="button"
+                  title="删除此预设"
+                  onClick={() => musicPresetService.remove(p.id)}
+                  className="text-xs text-zinc-600 hover:text-red-400"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {music && (
         <div className="border-t border-zinc-800 p-3">

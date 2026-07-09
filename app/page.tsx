@@ -7,6 +7,11 @@ import AuthGuard from "@/components/AuthGuard";
 import NewProjectModal from "@/components/NewProjectModal";
 import { authService } from "@/lib/services/auth";
 import { draftService } from "@/lib/services/drafts";
+import {
+  draftTemplateService,
+  type DraftTemplateSnapshot,
+  type UserAsset,
+} from "@/lib/services/user-templates";
 import type { AspectRatio, Draft, ProjectMode } from "@/lib/types";
 
 function formatTime(ts: number) {
@@ -35,9 +40,39 @@ function DraftList() {
     reload();
   }, [reload]);
 
-  async function handleCreate(ratio: AspectRatio, mode: ProjectMode) {
+  async function handleCreate(
+    ratio: AspectRatio,
+    mode: ProjectMode,
+    template?: UserAsset<DraftTemplateSnapshot>
+  ) {
     const draft = await draftService.create(ratio, mode);
+    if (template) {
+      // T1 从模板创建:带入风格设定,文字图层换新 id
+      const t = template.data;
+      await draftService.update(draft.id, {
+        texts: t.texts.map((text) => ({ ...text, id: crypto.randomUUID() })),
+        filterId: t.filterId,
+        filterStrength: t.filterStrength,
+        colorAdjust: { ...t.colorAdjust },
+        music: t.music ? { ...t.music } : undefined,
+      });
+    }
     router.push(`/editor/${draft.id}`);
+  }
+
+  /** T1 把草稿的风格设定(文字/滤镜/调色/音乐/画幅)存为可复用模板 */
+  function handleSaveTemplate(draft: Draft) {
+    const name = window.prompt("模板名称(保存文字图层、滤镜、调色、音乐与画幅设定)", draft.title);
+    if (!name?.trim()) return;
+    draftTemplateService.save(name.trim(), {
+      mode: draft.mode,
+      aspectRatio: draft.aspectRatio,
+      texts: draft.texts,
+      filterId: draft.filterId,
+      filterStrength: draft.filterStrength,
+      colorAdjust: draft.colorAdjust,
+      music: draft.music,
+    });
   }
 
   async function handleDelete(id: string) {
@@ -122,16 +157,29 @@ function DraftList() {
                 <span className="absolute left-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white">
                   {draft.mode === "gallery" ? "图文" : draft.aspectRatio}
                 </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(draft.id);
-                  }}
-                  className="absolute right-2 top-2 hidden rounded bg-black/60 px-1.5 py-0.5 text-xs text-white hover:bg-black/80 group-hover:block"
-                >
-                  删除
-                </button>
+                <div className="absolute right-2 top-2 hidden gap-1 group-hover:flex">
+                  <button
+                    type="button"
+                    title="把风格设定存为模板,新建项目时复用"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSaveTemplate(draft);
+                    }}
+                    className="rounded bg-black/60 px-1.5 py-0.5 text-xs text-white hover:bg-black/80"
+                  >
+                    存模板
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(draft.id);
+                    }}
+                    className="rounded bg-black/60 px-1.5 py-0.5 text-xs text-white hover:bg-black/80"
+                  >
+                    删除
+                  </button>
+                </div>
               </div>
               <div className="p-3">
                 <p className="truncate text-sm font-medium">{draft.title}</p>

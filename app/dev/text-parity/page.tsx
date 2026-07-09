@@ -26,18 +26,25 @@ interface Sample {
   borderColor?: string;
   fontWeight: "normal" | "bold";
   fontFamily?: string;
+  stroke?: { color: string; width: number };
+  shadow?: { color: string; blur: number; x: number; y: number };
+  letterSpacing?: number;
+  opacity?: number;
 }
 
 const SAMPLES: Sample[] = [
-  { content: "今日份好物", x: 50, y: 8, fontSize: 32, color: "#ffffff", background: "#ff2442", fontWeight: "bold" },
-  { content: "「把日子过成喜欢的样子」", x: 50, y: 20, fontSize: 24, color: "#4a453e", background: "#faf7f0", borderColor: "#d8d0c0", fontWeight: "normal", fontFamily: "songti" },
-  { content: "3个技巧\n学会剪辑", x: 50, y: 36, fontSize: 44, color: "#ffffff", fontWeight: "bold" },
+  { content: "今日份好物", x: 50, y: 7, fontSize: 30, color: "#ffffff", background: "#ff2442", fontWeight: "bold" },
+  { content: "「把日子过成喜欢的样子」", x: 50, y: 17, fontSize: 22, color: "#4a453e", background: "#faf7f0", borderColor: "#d8d0c0", fontWeight: "normal", fontFamily: "songti" },
+  { content: "3个技巧\n学会剪辑", x: 50, y: 31, fontSize: 40, color: "#ffffff", fontWeight: "bold" },
   {
     content: "这是一段特别长的说明文字用来验证预览和导出的自动换行是否逐行一致不会溢出画面",
-    x: 50, y: 56, fontSize: 26, color: "#111111", background: "#ffe234", fontWeight: "bold",
+    x: 50, y: 48, fontSize: 24, color: "#111111", background: "#ffe234", fontWeight: "bold",
   },
-  { content: "mixed 中英文 wrapping including-a-verylongword-abcdefg 测试", x: 50, y: 76, fontSize: 22, color: "#ffffff", background: "rgba(0,0,0,0.6)", fontWeight: "normal", fontFamily: "kaiti" },
-  { content: "认真生活的人先享受世界", x: 50, y: 90, fontSize: 18, color: "#e8e2d6", fontWeight: "normal", fontFamily: "songti" },
+  // T2 专业样式:描边 / 阴影 / 字间距 / 透明度
+  { content: "综艺花字", x: 50, y: 63, fontSize: 34, color: "#ffe234", fontWeight: "bold", stroke: { color: "#000000", width: 0.12 }, shadow: { color: "rgba(0,0,0,0.5)", blur: 0.08, x: 0.04, y: 0.06 } },
+  { content: "NIGHT VIBES", x: 50, y: 74, fontSize: 26, color: "#ffffff", fontWeight: "bold", letterSpacing: 0.12, shadow: { color: "#ff2fb0", blur: 0.3, x: 0, y: 0 } },
+  { content: "半透明字幕", x: 50, y: 84, fontSize: 22, color: "#ffffff", background: "rgba(0,0,0,0.6)", fontWeight: "normal", opacity: 0.7 },
+  { content: "mixed 中英 wrapping abcdefg 测试", x: 50, y: 93, fontSize: 18, color: "#e8e2d6", fontWeight: "normal", fontFamily: "kaiti" },
 ];
 
 export default function TextParityPage() {
@@ -65,6 +72,10 @@ export default function TextParityPage() {
       borderColor: s.borderColor,
       fontWeight: s.fontWeight,
       fontFamily: getFont(s.fontFamily).css,
+      stroke: s.stroke,
+      shadow: s.shadow,
+      letterSpacing: s.letterSpacing,
+      opacity: s.opacity,
     }));
     drawTextLayers(ctx, texts, W * SCALE, H * SCALE);
   }, [fontsReady]);
@@ -88,6 +99,7 @@ export default function TextParityPage() {
                     sizePx: (s.fontSize * H) / 1000,
                     fontWeight: s.fontWeight,
                     fontFamily: getFont(s.fontFamily).css,
+                    letterSpacingEm: s.letterSpacing,
                   },
                   W,
                   H
@@ -100,7 +112,14 @@ export default function TextParityPage() {
                       left: `${s.x}%`,
                       top: `${s.y}%`,
                       ...textLayerCss(
-                        { color: s.color, background: s.background, borderColor: s.borderColor },
+                        {
+                          color: s.color,
+                          background: s.background,
+                          borderColor: s.borderColor,
+                          stroke: s.stroke,
+                          shadow: s.shadow,
+                          opacity: s.opacity,
+                        },
                         layout
                       ),
                     }}

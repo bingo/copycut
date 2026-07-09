@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getFont } from "@/lib/data/fonts";
 import { TEXT_TEMPLATES, TEXT_TEMPLATE_CATEGORIES } from "@/lib/data/text-templates";
+import { TEXT_GROUP_TEMPLATES } from "@/lib/data/text-group-templates";
 import {
   textStyleService,
   type TextStyleSnapshot,
@@ -17,7 +18,7 @@ const MY_CATEGORY = "我的";
 
 /** F-15 文字添加 + F-16 文字模板库(F-64「小红书风」/ T1「我的」分类) */
 export default function TextPanel({ editor }: { editor: EditorState }) {
-  const { draft, apply, setSelection, playhead, totalDuration } = editor;
+  const { draft, apply, setSelection, playhead, totalDuration, addTextGroup } = editor;
   const [category, setCategory] = useState<string>(TEXT_TEMPLATE_CATEGORIES[0]);
   const [myStyles, setMyStyles] = useState<UserAsset<TextStyleSnapshot>[]>(() =>
     textStyleService.list()
@@ -68,8 +69,27 @@ export default function TextPanel({ editor }: { editor: EditorState }) {
         </p>
       </div>
 
+      {/* T2 文字组合模板:一键投放一组预排版图层(广告/种草/教程),各层可再微调 */}
       <div className="border-t border-zinc-800 px-3 pt-2 text-xs font-medium text-zinc-400">
-        文字模板
+        文字组合(广告 / 种草)
+      </div>
+      <div className="grid grid-cols-2 gap-2 px-3 pb-3 pt-2">
+        {TEXT_GROUP_TEMPLATES.map((g) => (
+          <button
+            key={g.id}
+            type="button"
+            title={g.hint}
+            onClick={() => addTextGroup(g.layers)}
+            className="flex flex-col items-start gap-0.5 rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-left hover:border-zinc-600"
+          >
+            <span className="text-xs font-medium text-zinc-200">{g.name}</span>
+            <span className="truncate text-[10px] text-zinc-500">{g.hint}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="border-t border-zinc-800 px-3 pt-2 text-xs font-medium text-zinc-400">
+        单条文字模板
       </div>
       <CategoryTabs
         categories={[...TEXT_TEMPLATE_CATEGORIES, MY_CATEGORY]}
@@ -140,6 +160,10 @@ export default function TextPanel({ editor }: { editor: EditorState }) {
                 fontWeight: t.style.fontWeight,
                 fontSize: t.style.fontSize,
                 fontFamily: t.style.fontFamily,
+                stroke: t.style.stroke,
+                shadow: t.style.shadow,
+                letterSpacing: t.style.letterSpacing,
+                opacity: t.style.opacity,
                 templateId: t.id,
               })
             }

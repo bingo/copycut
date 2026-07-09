@@ -49,6 +49,10 @@ export default function PropertiesPanel({ editor }: { editor: EditorState }) {
       fontFamily: selectedText.fontFamily,
       background: selectedText.background,
       borderColor: selectedText.borderColor,
+      stroke: selectedText.stroke,
+      shadow: selectedText.shadow,
+      letterSpacing: selectedText.letterSpacing,
+      opacity: selectedText.opacity,
     });
     setNamingStyle(false);
     setStyleName("");
@@ -234,6 +238,123 @@ export default function PropertiesPanel({ editor }: { editor: EditorState }) {
               onChange={(v) => updateText({ borderColor: v })}
             />
           </div>
+
+          {/* T2 专业样式:描边 / 阴影 / 字间距 / 透明度,均走统一渲染层与导出一致 */}
+          <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 p-2.5">
+            <p className="text-xs font-medium text-zinc-400">专业样式</p>
+
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={!!selectedText.stroke}
+                  onChange={(e) =>
+                    updateText({
+                      stroke: e.target.checked
+                        ? { color: selectedText.stroke?.color ?? "#000000", width: selectedText.stroke?.width ?? 0.08 }
+                        : undefined,
+                    })
+                  }
+                  className="accent-[#ff2442]"
+                />
+                描边
+              </label>
+              {selectedText.stroke && (
+                <>
+                  <input
+                    type="color"
+                    value={selectedText.stroke.color}
+                    onChange={(e) =>
+                      updateText({ stroke: { ...selectedText.stroke!, color: e.target.value } })
+                    }
+                    className="h-7 w-9 cursor-pointer rounded border border-zinc-700 bg-transparent"
+                  />
+                  <input
+                    type="range"
+                    min={2}
+                    max={20}
+                    value={Math.round(selectedText.stroke.width * 100)}
+                    onChange={(e) =>
+                      updateText(
+                        { stroke: { ...selectedText.stroke!, width: Number(e.target.value) / 100 } },
+                      )
+                    }
+                    className="flex-1 accent-[#ff2442]"
+                    title="描边粗细"
+                  />
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={!!selectedText.shadow}
+                  onChange={(e) =>
+                    updateText({
+                      shadow: e.target.checked
+                        ? selectedText.shadow ?? { color: "#000000", blur: 0.1, x: 0.04, y: 0.06 }
+                        : undefined,
+                    })
+                  }
+                  className="accent-[#ff2442]"
+                />
+                阴影
+              </label>
+              {selectedText.shadow && (
+                <>
+                  <input
+                    type="color"
+                    value={selectedText.shadow.color}
+                    onChange={(e) =>
+                      updateText({ shadow: { ...selectedText.shadow!, color: e.target.value } })
+                    }
+                    className="h-7 w-9 cursor-pointer rounded border border-zinc-700 bg-transparent"
+                  />
+                  <input
+                    type="range"
+                    min={0}
+                    max={40}
+                    value={Math.round(selectedText.shadow.blur * 100)}
+                    onChange={(e) =>
+                      updateText({ shadow: { ...selectedText.shadow!, blur: Number(e.target.value) / 100 } })
+                    }
+                    className="flex-1 accent-[#ff2442]"
+                    title="阴影模糊"
+                  />
+                </>
+              )}
+            </div>
+
+            <Field label={`字间距 ${Math.round((selectedText.letterSpacing ?? 0) * 100)}`}>
+              <input
+                type="range"
+                min={0}
+                max={50}
+                value={Math.round((selectedText.letterSpacing ?? 0) * 100)}
+                onChange={(e) =>
+                  updateText({ letterSpacing: Number(e.target.value) / 100 || undefined })
+                }
+                className="w-full accent-[#ff2442]"
+              />
+            </Field>
+
+            <Field label={`不透明度 ${Math.round((selectedText.opacity ?? 1) * 100)}%`}>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                value={Math.round((selectedText.opacity ?? 1) * 100)}
+                onChange={(e) => {
+                  const v = Number(e.target.value) / 100;
+                  updateText({ opacity: v >= 1 ? undefined : v });
+                }}
+                className="w-full accent-[#ff2442]"
+              />
+            </Field>
+          </div>
+
           {/* T1 样式沉淀:存入个人样式库,文字面板「我的」分类里跨草稿复用 */}
           {namingStyle ? (
             <div className="mt-2 flex items-center gap-2">

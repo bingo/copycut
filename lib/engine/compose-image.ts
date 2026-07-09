@@ -1,7 +1,13 @@
 import { ColorGrader, isIdentityGrade, type GradeParams } from "./colorgrade";
 import { drawTextBox, layoutText } from "./text-layout";
 import { getFont } from "../data/fonts";
-import type { CaptionStyle, GalleryImage, TextOverlay } from "../types";
+import type {
+  CaptionStyle,
+  GalleryImage,
+  TextOverlay,
+  TextShadow,
+  TextStroke,
+} from "../types";
 
 /** 画布上渲染的一条文字(像素坐标系) */
 export interface RenderText {
@@ -17,6 +23,11 @@ export interface RenderText {
   fontWeight: "normal" | "bold";
   /** CSS font-family 栈,缺省为默认黑体 */
   fontFamily?: string;
+  /** T2 描边/阴影/字间距(em)/透明度 */
+  stroke?: TextStroke;
+  shadow?: TextShadow;
+  letterSpacing?: number;
+  opacity?: number;
 }
 
 /**
@@ -34,6 +45,10 @@ export function overlayToRenderText(t: TextOverlay, canvasHeight: number): Rende
     borderColor: t.borderColor,
     fontWeight: t.fontWeight,
     fontFamily: getFont(t.fontFamily).css,
+    stroke: t.stroke,
+    shadow: t.shadow,
+    letterSpacing: t.letterSpacing,
+    opacity: t.opacity,
   };
 }
 
@@ -120,20 +135,28 @@ export function drawTextLayers(
   canvasH: number
 ): void {
   for (const t of texts) {
-    // T4 所见即所得:布局(含自动换行)与预览 DOM 共用 text-layout
+    // T4 所见即所得:布局(含自动换行/字间距)与预览 DOM 共用 text-layout
     const layout = layoutText(
       {
         content: t.content,
         sizePx: t.sizePx,
         fontWeight: t.fontWeight,
         fontFamily: t.fontFamily ?? getFont(undefined).css,
+        letterSpacingEm: t.letterSpacing,
       },
       canvasW,
       canvasH
     );
     drawTextBox(
       ctx,
-      { color: t.color, background: t.background, borderColor: t.borderColor },
+      {
+        color: t.color,
+        background: t.background,
+        borderColor: t.borderColor,
+        stroke: t.stroke,
+        shadow: t.shadow,
+        opacity: t.opacity,
+      },
       layout,
       (t.xPct / 100) * canvasW,
       (t.yPct / 100) * canvasH

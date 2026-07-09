@@ -414,6 +414,7 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
                 sizePx: (t.fontSize * canvasSize.h) / 1000,
                 fontWeight: t.fontWeight,
                 fontFamily: getFont(t.fontFamily).css,
+                letterSpacingEm: t.letterSpacing,
               },
               canvasSize.w,
               canvasSize.h
@@ -436,7 +437,14 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
                   left: `${t.x}%`,
                   top: `${t.y}%`,
                   ...textLayerCss(
-                    { color: t.color, background: t.background, borderColor: t.borderColor },
+                    {
+                      color: t.color,
+                      background: t.background,
+                      borderColor: t.borderColor,
+                      stroke: t.stroke,
+                      shadow: t.shadow,
+                      opacity: t.opacity,
+                    },
                     layout
                   ),
                 }}

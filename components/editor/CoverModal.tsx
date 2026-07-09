@@ -98,6 +98,7 @@ function CoverTextLayers({
             sizePx: (t.fontSize * size.h) / 1000,
             fontWeight: t.fontWeight,
             fontFamily: getFont(t.fontFamily).css,
+            letterSpacingEm: t.letterSpacing,
           },
           size.w,
           size.h
@@ -142,6 +143,9 @@ function CoverTextLayers({
                   color: t.color,
                   background: t.background || undefined,
                   borderColor: t.borderColor,
+                  stroke: t.stroke,
+                  shadow: t.shadow,
+                  opacity: t.opacity,
                 },
                 layout
               ),

@@ -73,6 +73,23 @@ export const DEFAULT_COLOR_ADJUST: ColorAdjust = {
   sharpness: 0,
 };
 
+/** 文字描边(T2),宽度为字号的倍数(em) */
+export interface TextStroke {
+  color: string;
+  /** 描边宽度,em(相对字号);典型 0.04–0.16 */
+  width: number;
+}
+
+/** 文字阴影(T2),偏移/模糊均为字号倍数(em),与字号等比缩放 */
+export interface TextShadow {
+  color: string;
+  /** 模糊半径,em */
+  blur: number;
+  /** 水平/垂直偏移,em */
+  x: number;
+  y: number;
+}
+
 /** 画面文字叠层 */
 export interface TextOverlay {
   id: string;
@@ -95,6 +112,14 @@ export interface TextOverlay {
   background?: string;
   /** 文字框边框色,可为空 */
   borderColor?: string;
+  /** T2 描边,可为空 */
+  stroke?: TextStroke;
+  /** T2 阴影,可为空 */
+  shadow?: TextShadow;
+  /** T2 字间距,em(相对字号);缺省 0 */
+  letterSpacing?: number;
+  /** T2 整体不透明度 0-1;缺省 1 */
+  opacity?: number;
 }
 
 /** 背景音乐配置 */

@@ -25,7 +25,16 @@ export interface UserAsset<T> {
 /** 文字样式快照(不含内容/位置/时间) */
 export type TextStyleSnapshot = Pick<
   TextOverlay,
-  "fontSize" | "color" | "fontWeight" | "fontFamily" | "background" | "borderColor"
+  | "fontSize"
+  | "color"
+  | "fontWeight"
+  | "fontFamily"
+  | "background"
+  | "borderColor"
+  | "stroke"
+  | "shadow"
+  | "letterSpacing"
+  | "opacity"
 >;
 
 /** 草稿模板:保留可复用的风格设定,不含素材/片段等内容 */

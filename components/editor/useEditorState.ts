@@ -212,6 +212,26 @@ export function useEditorState(id: string) {
 
   const clips = draft?.clips ?? [];
 
+  /** T2 一次性加入一组文字图层(文字组合模板),共享同一出现时间,末层选中 */
+  const addTextGroup = useCallback(
+    (layers: Omit<TextOverlay, "id" | "start" | "end">[]) => {
+      const current = draftRef.current;
+      if (!current || layers.length === 0) return;
+      const start =
+        totalDuration > 0 ? Math.min(playhead, Math.max(totalDuration - 0.5, 0)) : 0;
+      const end = totalDuration > 0 ? Math.min(start + 3, totalDuration) : start + 3;
+      const overlays: TextOverlay[] = layers.map((l) => ({
+        ...l,
+        id: crypto.randomUUID(),
+        start,
+        end,
+      }));
+      apply({ texts: [...current.texts, ...overlays] });
+      setSelection({ type: "text", id: overlays[overlays.length - 1].id });
+    },
+    [apply, playhead, totalDuration]
+  );
+
   const addClipFromAsset = useCallback(
     (asset: MediaAsset) => {
       const current = draftRef.current;
@@ -469,6 +489,7 @@ export function useEditorState(id: string) {
     undo,
     redo,
     addClipFromAsset,
+    addTextGroup,
     clipAtPlayhead,
     splitAtPlayhead,
     trimClip,

@@ -96,8 +96,14 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
   }, []);
   const videoRef = useRef<HTMLVideoElement>(null);
   const bgmRef = useRef<HTMLAudioElement>(null);
-  /** 抓取点相对文字中心的偏移(百分比),移动时按绝对位置计算以支持吸附 */
-  const dragText = useRef<{ id: string; grabDX: number; grabDY: number } | null>(null);
+  /** 抓取点相对文字中心的偏移(百分比),移动时按绝对位置计算以支持吸附;
+   *  moved 标记首次实际移动,用于懒压历史(纯点击不进撤销栈) */
+  const dragText = useRef<{
+    id: string;
+    grabDX: number;
+    grabDY: number;
+    moved: boolean;
+  } | null>(null);
   const transitionCanvasRef = useRef<HTMLCanvasElement>(null);
   const frameCache = useRef(new Map<string, TransitionSource>());
   /** 抽帧完成后递增,触发转场层重绘(缓存本身放 ref 不重渲染) */
@@ -261,9 +267,8 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
       id: textId,
       grabDX: ((e.clientX - rect.left) / rect.width) * 100 - text.x,
       grabDY: ((e.clientY - rect.top) / rect.height) * 100 - text.y,
+      moved: false,
     };
-    // 手势开始压入一次历史,拖拽过程 undoable:false(与修剪同一模式)
-    pushHistory();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }
 
@@ -274,6 +279,11 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
     const rect = canvas.getBoundingClientRect();
     let x = ((e.clientX - rect.left) / rect.width) * 100 - drag.grabDX;
     let y = ((e.clientY - rect.top) / rect.height) * 100 - drag.grabDY;
+    // 首次实际移动才压入历史,拖拽过程 undoable:false(与修剪同一模式;纯点击不入栈)
+    if (!drag.moved) {
+      drag.moved = true;
+      pushHistory();
+    }
 
     // T3 智能吸附:中心/三分线/其他文字中心;Alt 临时禁用
     let gx: number | null = null;

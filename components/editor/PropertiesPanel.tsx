@@ -9,7 +9,17 @@ import type { EditorState } from "./useEditorState";
 
 /** 右侧属性面板:按选中对象(片段/文字)展示可编辑属性 */
 export default function PropertiesPanel({ editor }: { editor: EditorState }) {
-  const { draft, clips, selection, apply, deleteClip, setSelection, totalDuration } = editor;
+  const {
+    draft,
+    clips,
+    selection,
+    apply,
+    deleteClip,
+    setSelection,
+    totalDuration,
+    alignSelectedText,
+    reorderSelectedText,
+  } = editor;
   /** T1 存为我的样式:内联命名输入 */
   const [namingStyle, setNamingStyle] = useState(false);
   const [styleName, setStyleName] = useState("");
@@ -86,6 +96,71 @@ export default function PropertiesPanel({ editor }: { editor: EditorState }) {
               {(selectedText.start ?? 0).toFixed(1)}s ~{" "}
               {(selectedText.end ?? totalDuration).toFixed(1)}s(在时间轴文字轨拖动调整)
             </p>
+          </Field>
+
+          {/* T3 对齐:一键对齐到画布参考位置(方向键可微调,拖拽时自动吸附) */}
+          <Field label="对齐画布">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex gap-1">
+                {(
+                  [
+                    ["左", "x", 10],
+                    ["水平居中", "x", 50],
+                    ["右", "x", 90],
+                  ] as const
+                ).map(([label, axis, value]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => alignSelectedText(axis, value)}
+                    className="flex-1 rounded border border-zinc-700 py-1 text-[11px] text-zinc-300 hover:border-zinc-500"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-1">
+                {(
+                  [
+                    ["上", "y", 10],
+                    ["垂直居中", "y", 50],
+                    ["下", "y", 90],
+                  ] as const
+                ).map(([label, axis, value]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => alignSelectedText(axis, value)}
+                    className="flex-1 rounded border border-zinc-700 py-1 text-[11px] text-zinc-300 hover:border-zinc-500"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Field>
+
+          {/* T3 图层顺序:texts 数组末尾为顶层,渲染顺序即叠放顺序 */}
+          <Field label="图层顺序">
+            <div className="flex gap-1">
+              {(
+                [
+                  ["置顶", "front"],
+                  ["上移", "forward"],
+                  ["下移", "backward"],
+                  ["置底", "back"],
+                ] as const
+              ).map(([label, dir]) => (
+                <button
+                  key={dir}
+                  type="button"
+                  onClick={() => reorderSelectedText(dir)}
+                  className="flex-1 rounded border border-zinc-700 py-1 text-[11px] text-zinc-300 hover:border-zinc-500"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </Field>
           <Field label="内容">
             <textarea

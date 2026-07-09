@@ -7,6 +7,9 @@ import type { EditorState } from "./useEditorState";
 const FRAME_STEP = 1 / 30;
 /** Shift + 方向键大步步长(秒) */
 const LARGE_STEP = 1;
+/** T3 方向键微调文字的步长(画布百分比),Shift 大步 */
+const TEXT_NUDGE_STEP = 0.5;
+const TEXT_NUDGE_LARGE = 5;
 
 /** 是否 Mac 平台,决定快捷键提示显示 ⌘ 还是 Ctrl */
 export function isMacPlatform(): boolean {
@@ -93,6 +96,22 @@ export function useEditorShortcuts(editor: EditorState, options: { modalOpen: bo
         return;
       }
       if (meta) return;
+
+      // T3 选中文字时方向键微调位置(否则移动播放头)
+      if (
+        ed.selection?.type === "text" &&
+        (e.key === "ArrowLeft" ||
+          e.key === "ArrowRight" ||
+          e.key === "ArrowUp" ||
+          e.key === "ArrowDown")
+      ) {
+        e.preventDefault();
+        const step = e.shiftKey ? TEXT_NUDGE_LARGE : TEXT_NUDGE_STEP;
+        const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+        ed.nudgeSelectedText(dx, dy);
+        return;
+      }
 
       switch (e.key) {
         case " ":

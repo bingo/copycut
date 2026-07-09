@@ -16,6 +16,14 @@ export default function ShortcutsModal({ onClose }: { onClose: () => void }) {
       ],
     },
     {
+      title: "文字排版",
+      items: [
+        [["←↑→↓"], "微调选中文字位置"],
+        [["Shift", "方向键"], "大步移动文字"],
+        [["拖拽"], "自动吸附中心 / 三分线(按住 Alt 关闭)"],
+      ],
+    },
+    {
       title: "剪辑",
       items: [
         [["S"], "在播放头处分割片段"],

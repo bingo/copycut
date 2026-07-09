@@ -388,6 +388,66 @@ export function useEditorState(id: string) {
     [apply]
   );
 
+  // T3 方向键微调选中文字位置(dx/dy 为画布百分比增量),拖拽过程 undoable:false
+  const nudgeSelectedText = useCallback(
+    (dx: number, dy: number, options?: { undoable?: boolean }) => {
+      const current = draftRef.current;
+      if (!current || selection?.type !== "text") return;
+      apply(
+        {
+          texts: current.texts.map((t) =>
+            t.id === selection.id
+              ? {
+                  ...t,
+                  x: Math.max(2, Math.min(98, t.x + dx)),
+                  y: Math.max(2, Math.min(98, t.y + dy)),
+                }
+              : t
+          ),
+        },
+        options
+      );
+    },
+    [apply, selection]
+  );
+
+  /** T3 对齐选中文字到画布参考位置(水平/垂直,百分比) */
+  const alignSelectedText = useCallback(
+    (axis: "x" | "y", value: number) => {
+      const current = draftRef.current;
+      if (!current || selection?.type !== "text") return;
+      apply({
+        texts: current.texts.map((t) =>
+          t.id === selection.id ? { ...t, [axis]: value } : t
+        ),
+      });
+    },
+    [apply, selection]
+  );
+
+  /** T3 图层顺序:选中文字在 texts 数组中前移/后移(数组末尾 = 顶层) */
+  const reorderSelectedText = useCallback(
+    (direction: "front" | "back" | "forward" | "backward") => {
+      const current = draftRef.current;
+      if (!current || selection?.type !== "text") return;
+      const from = current.texts.findIndex((t) => t.id === selection.id);
+      if (from === -1) return;
+      const next = [...current.texts];
+      const [moved] = next.splice(from, 1);
+      const to =
+        direction === "front"
+          ? next.length
+          : direction === "back"
+            ? 0
+            : direction === "forward"
+              ? Math.min(next.length, from + 1)
+              : Math.max(0, from - 1);
+      next.splice(to, 0, moved);
+      apply({ texts: next });
+    },
+    [apply, selection]
+  );
+
   return {
     draft,
     notFound,
@@ -418,6 +478,9 @@ export function useEditorState(id: string) {
     duplicateSelected,
     deleteSelected,
     reorderClip,
+    nudgeSelectedText,
+    alignSelectedText,
+    reorderSelectedText,
   };
 }
 

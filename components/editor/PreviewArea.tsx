@@ -29,6 +29,11 @@ const CANVAS_RATIO: Record<Draft["aspectRatio"], string> = {
 /** 播放中允许的音画漂移,超过则纠偏 seek */
 const DRIFT_TOLERANCE = 0.3;
 
+/** T3 拖拽吸附阈值(画布百分比);Alt 拖拽可临时禁用 */
+const SNAP_THRESHOLD = 1.5;
+/** 吸附/栅格的固定参考位置:中心 + 三分线 */
+const SNAP_LINES = [50, 100 / 3, 200 / 3];
+
 /** 转场边界一侧的取帧点 */
 interface FramePoint {
   assetId: string;
@@ -63,8 +68,16 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
     selection,
     setSelection,
     apply,
+    pushHistory,
   } = editor;
   const [phoneFrame, setPhoneFrame] = useState(false);
+  /** T3 栅格参考线(三分线/中心/安全边距),仅预览层不进导出 */
+  const [showGrid, setShowGrid] = useState(false);
+  /** T3 拖拽吸附时命中的参考线(画布百分比),null 不显示 */
+  const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({
+    x: null,
+    y: null,
+  });
   const canvasRef = useRef<HTMLDivElement>(null);
   /** 画布实测像素尺寸;文字按 fontSize × 高/1000 换算,与导出同标尺(T4) */
   const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
@@ -83,7 +96,8 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
   }, []);
   const videoRef = useRef<HTMLVideoElement>(null);
   const bgmRef = useRef<HTMLAudioElement>(null);
-  const dragText = useRef<{ id: string; startX: number; startY: number } | null>(null);
+  /** 抓取点相对文字中心的偏移(百分比),移动时按绝对位置计算以支持吸附 */
+  const dragText = useRef<{ id: string; grabDX: number; grabDY: number } | null>(null);
   const transitionCanvasRef = useRef<HTMLCanvasElement>(null);
   const frameCache = useRef(new Map<string, TransitionSource>());
   /** 抽帧完成后递增,触发转场层重绘(缓存本身放 ref 不重渲染) */
@@ -239,7 +253,17 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
   function onTextPointerDown(e: React.PointerEvent, textId: string) {
     e.stopPropagation();
     setSelection({ type: "text", id: textId });
-    dragText.current = { id: textId, startX: e.clientX, startY: e.clientY };
+    const canvas = canvasRef.current;
+    const text = draft?.texts.find((t) => t.id === textId);
+    if (!canvas || !text) return;
+    const rect = canvas.getBoundingClientRect();
+    dragText.current = {
+      id: textId,
+      grabDX: ((e.clientX - rect.left) / rect.width) * 100 - text.x,
+      grabDY: ((e.clientY - rect.top) / rect.height) * 100 - text.y,
+    };
+    // 手势开始压入一次历史,拖拽过程 undoable:false(与修剪同一模式)
+    pushHistory();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }
 
@@ -248,17 +272,40 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
     const canvas = canvasRef.current;
     if (!drag || !canvas || !draft) return;
     const rect = canvas.getBoundingClientRect();
-    const dx = ((e.clientX - drag.startX) / rect.width) * 100;
-    const dy = ((e.clientY - drag.startY) / rect.height) * 100;
-    if (dx === 0 && dy === 0) return;
-    drag.startX = e.clientX;
-    drag.startY = e.clientY;
-    // 拖拽过程不进撤销栈,松手时的位置即最终状态
+    let x = ((e.clientX - rect.left) / rect.width) * 100 - drag.grabDX;
+    let y = ((e.clientY - rect.top) / rect.height) * 100 - drag.grabDY;
+
+    // T3 智能吸附:中心/三分线/其他文字中心;Alt 临时禁用
+    let gx: number | null = null;
+    let gy: number | null = null;
+    if (!e.altKey) {
+      const others = draft.texts.filter((t) => t.id !== drag.id);
+      const targetsX = [...SNAP_LINES, ...others.map((t) => t.x)];
+      const targetsY = [...SNAP_LINES, ...others.map((t) => t.y)];
+      const nearest = (v: number, targets: number[]) => {
+        let best: number | null = null;
+        let dist = SNAP_THRESHOLD;
+        for (const target of targets) {
+          const d = Math.abs(v - target);
+          if (d < dist) {
+            best = target;
+            dist = d;
+          }
+        }
+        return best;
+      };
+      gx = nearest(x, targetsX);
+      gy = nearest(y, targetsY);
+      if (gx !== null) x = gx;
+      if (gy !== null) y = gy;
+    }
+    setGuides({ x: gx, y: gy });
+
     apply(
       {
         texts: draft.texts.map((t) =>
           t.id === drag.id
-            ? { ...t, x: Math.max(2, Math.min(98, t.x + dx)), y: Math.max(2, Math.min(98, t.y + dy)) }
+            ? { ...t, x: Math.max(2, Math.min(98, x)), y: Math.max(2, Math.min(98, y)) }
             : t
         ),
       },
@@ -268,6 +315,7 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
 
   function onTextPointerUp() {
     dragText.current = null;
+    setGuides({ x: null, y: null });
   }
 
   const canvas = (
@@ -311,6 +359,35 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
           <br />
           导入素材后显示画面
         </p>
+      )}
+
+      {/* T3 栅格参考线:三分线 + 中心十字 + 安全边距,仅辅助排版不进导出 */}
+      {showGrid && (
+        <div className="pointer-events-none absolute inset-0">
+          {[100 / 3, 200 / 3].map((p) => (
+            <div key={`v${p}`} className="absolute bottom-0 top-0 w-px bg-white/20" style={{ left: `${p}%` }} />
+          ))}
+          {[100 / 3, 200 / 3].map((p) => (
+            <div key={`h${p}`} className="absolute left-0 right-0 h-px bg-white/20" style={{ top: `${p}%` }} />
+          ))}
+          <div className="absolute bottom-0 left-1/2 top-0 w-px bg-white/30" />
+          <div className="absolute left-0 right-0 top-1/2 h-px bg-white/30" />
+          <div className="absolute inset-[5%] rounded border border-dashed border-white/25" />
+        </div>
+      )}
+
+      {/* T3 吸附参考线:拖拽命中吸附目标时显示 */}
+      {guides.x !== null && (
+        <div
+          className="pointer-events-none absolute bottom-0 top-0 w-px bg-[#ff2442]"
+          style={{ left: `${guides.x}%` }}
+        />
+      )}
+      {guides.y !== null && (
+        <div
+          className="pointer-events-none absolute left-0 right-0 h-px bg-[#ff2442]"
+          style={{ top: `${guides.y}%` }}
+        />
       )}
 
       {/* F-14 转场叠层:仅边界窗口内有内容,其余时间保持透明;
@@ -400,6 +477,18 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
           title={playing ? "暂停 (Space)" : "播放 (Space)"}
         >
           {playing ? "⏸" : "▶"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowGrid(!showGrid)}
+          title="三分线 / 中心线 / 安全边距(仅辅助排版,不会导出)"
+          className={`rounded-lg border px-2 py-1.5 text-xs transition-colors ${
+            showGrid
+              ? "border-[#ff2442] text-[#ff2442]"
+              : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+          }`}
+        >
+          栅格
         </button>
         <button
           type="button"

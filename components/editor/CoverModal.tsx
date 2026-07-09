@@ -11,6 +11,7 @@ import {
 import { getFont } from "@/lib/data/fonts";
 import { exportCoverJpg } from "@/lib/engine/export-images";
 import { downloadBlob } from "@/lib/engine/compose-image";
+import { layoutText, textLayerCss } from "@/lib/engine/text-layout";
 import type { CoverConfig, Draft, TextOverlay } from "@/lib/types";
 import type { EditorState } from "./useEditorState";
 import { Field, FontSelect, OptionalColorField } from "./fields";
@@ -27,91 +28,129 @@ const COVER_RATIO_CSS: Record<Draft["aspectRatio"], string> = {
   "16:9": "16 / 9",
 };
 
-/** 跟踪元素实高:文字字号按 fontSize × 高/1000 换算,与导出同标尺 */
-function useElementHeight<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+/** 跟踪元素实测尺寸:文字布局按 fontSize × 高/1000 换算,与导出同标尺(T4) */
+function useElementSize<T extends HTMLElement>(): [
+  React.RefObject<T | null>,
+  { w: number; h: number },
+] {
   const ref = useRef<T>(null);
-  const [h, setH] = useState(0);
+  const [size, setSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setH(el.clientHeight));
+    const ro = new ResizeObserver(() =>
+      setSize({ w: el.clientWidth, h: el.clientHeight })
+    );
     ro.observe(el);
     return () => ro.disconnect();
   });
-  return [ref, h];
+  return [ref, size];
 }
 
 /** 封面上的文字层(旧单条文字 + 模板分层标题),编辑视图传 onDragLayer 支持拖拽定位 */
 function CoverTextLayers({
   cover,
-  heightPx,
+  size,
   onDragLayer,
 }: {
   cover: CoverConfig;
-  heightPx: number;
+  size: { w: number; h: number };
   onDragLayer?: (id: string, dxPct: number, dyPct: number) => void;
 }) {
   const drag = useRef<{ id: string; x: number; y: number } | null>(null);
   const legacy = getTextTemplate(cover.templateId);
+  if (size.h <= 0) return null;
   return (
     <>
-      {cover.text && (
-        <span
-          className="absolute left-1/2 top-1/2 max-w-[90%] -translate-x-1/2 -translate-y-1/2 whitespace-pre-wrap rounded px-2 py-1 text-center leading-snug"
-          style={{
-            color: legacy?.style.color ?? "#ffffff",
-            background: legacy?.style.background,
-            fontWeight: legacy?.style.fontWeight ?? "bold",
-            fontSize: Math.max(9, ((legacy?.style.fontSize ?? 36) * heightPx) / 600),
-          }}
-        >
-          {cover.text}
-        </span>
-      )}
-      {(cover.coverTexts ?? []).map((t) => (
-        <span
-          key={t.id}
-          onPointerDown={
-            onDragLayer
-              ? (e) => {
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  drag.current = { id: t.id, x: e.clientX, y: e.clientY };
-                }
-              : undefined
-          }
-          onPointerMove={
-            onDragLayer
-              ? (e) => {
-                  const d = drag.current;
-                  const box = e.currentTarget.parentElement?.getBoundingClientRect();
-                  if (!d || d.id !== t.id || !box) return;
-                  onDragLayer(
-                    t.id,
-                    ((e.clientX - d.x) / box.width) * 100,
-                    ((e.clientY - d.y) / box.height) * 100
-                  );
-                  drag.current = { id: t.id, x: e.clientX, y: e.clientY };
-                }
-              : undefined
-          }
-          onPointerUp={() => (drag.current = null)}
-          className={`absolute max-w-[92%] -translate-x-1/2 -translate-y-1/2 whitespace-pre-wrap rounded px-1.5 py-0.5 text-center leading-snug ${
-            onDragLayer ? "cursor-move touch-none select-none hover:ring-1 hover:ring-zinc-400" : ""
-          }`}
-          style={{
-            left: `${t.x}%`,
-            top: `${t.y}%`,
-            color: t.color,
-            background: t.background || undefined,
-            border: t.borderColor ? `1.5px solid ${t.borderColor}` : undefined,
+      {cover.text &&
+        (() => {
+          // 旧单条封面文字沿用 /600 标尺(与 exportCoverJpg 一致)
+          const layout = layoutText(
+            {
+              content: cover.text,
+              sizePx: ((legacy?.style.fontSize ?? 36) * size.h) / 600,
+              fontWeight: legacy?.style.fontWeight ?? "bold",
+              fontFamily: getFont(legacy?.style.fontFamily).css,
+            },
+            size.w,
+            size.h
+          );
+          return (
+            <span
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+              style={textLayerCss(
+                {
+                  color: legacy?.style.color ?? "#ffffff",
+                  background: legacy?.style.background,
+                },
+                layout
+              )}
+            >
+              {layout.lines.join("\n")}
+            </span>
+          );
+        })()}
+      {(cover.coverTexts ?? []).map((t) => {
+        // T4:与导出共用 text-layout 布局
+        const layout = layoutText(
+          {
+            content: t.content,
+            sizePx: (t.fontSize * size.h) / 1000,
             fontWeight: t.fontWeight,
             fontFamily: getFont(t.fontFamily).css,
-            fontSize: Math.max(8, (t.fontSize * heightPx) / 1000),
-          }}
-        >
-          {t.content}
-        </span>
-      ))}
+          },
+          size.w,
+          size.h
+        );
+        return (
+          <span
+            key={t.id}
+            onPointerDown={
+              onDragLayer
+                ? (e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    drag.current = { id: t.id, x: e.clientX, y: e.clientY };
+                  }
+                : undefined
+            }
+            onPointerMove={
+              onDragLayer
+                ? (e) => {
+                    const d = drag.current;
+                    const box = e.currentTarget.parentElement?.getBoundingClientRect();
+                    if (!d || d.id !== t.id || !box) return;
+                    onDragLayer(
+                      t.id,
+                      ((e.clientX - d.x) / box.width) * 100,
+                      ((e.clientY - d.y) / box.height) * 100
+                    );
+                    drag.current = { id: t.id, x: e.clientX, y: e.clientY };
+                  }
+                : undefined
+            }
+            onPointerUp={() => (drag.current = null)}
+            className={`absolute -translate-x-1/2 -translate-y-1/2 ${
+              onDragLayer
+                ? "cursor-move touch-none select-none hover:outline hover:outline-1 hover:outline-zinc-400"
+                : ""
+            }`}
+            style={{
+              left: `${t.x}%`,
+              top: `${t.y}%`,
+              ...textLayerCss(
+                {
+                  color: t.color,
+                  background: t.background || undefined,
+                  borderColor: t.borderColor,
+                },
+                layout
+              ),
+            }}
+          >
+            {layout.lines.join("\n")}
+          </span>
+        );
+      })}
     </>
   );
 }
@@ -192,8 +231,8 @@ export default function CoverModal({
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"edit" | "feed">("edit");
-  const [previewRef, previewH] = useElementHeight<HTMLDivElement>();
-  const [cardRef, cardH] = useElementHeight<HTMLDivElement>();
+  const [previewRef, previewSize] = useElementSize<HTMLDivElement>();
+  const [cardRef, cardSize] = useElementSize<HTMLDivElement>();
 
   if (!draft) return null;
 
@@ -352,7 +391,7 @@ export default function CoverModal({
                           alt="封面帧"
                           className="h-full w-full object-cover"
                         />
-                        <CoverTextLayers cover={cover} heightPx={cardH} />
+                        <CoverTextLayers cover={cover} size={cardSize} />
                       </div>
                     ) : (
                       <p className="px-3 text-center text-[11px] text-zinc-600">
@@ -403,7 +442,7 @@ export default function CoverModal({
                     {isGallery ? "从右侧选择一张图片作为封面" : "从下方帧预览器选取封面帧"}
                   </p>
                 )}
-                <CoverTextLayers cover={cover} heightPx={previewH} onDragLayer={moveLayer} />
+                <CoverTextLayers cover={cover} size={previewSize} onDragLayer={moveLayer} />
               </div>
               <p className="mt-2 text-[11px] leading-4 text-zinc-600">
                 {cover.coverTexts?.length

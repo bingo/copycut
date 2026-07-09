@@ -7,6 +7,7 @@ import { filterToCss, getFilter, FILTERS } from "@/lib/data/filters";
 import { getFont } from "@/lib/data/fonts";
 import { GALLERY_STYLE_TEMPLATES } from "@/lib/data/gallery-style-templates";
 import { DEFAULT_CAPTION_STYLE } from "@/lib/engine/compose-image";
+import { layoutText, textLayerCss } from "@/lib/engine/text-layout";
 import type { CaptionStyle, GalleryImage } from "@/lib/types";
 import { Field, FontSelect, OptionalColorField } from "./fields";
 import type { EditorState } from "./useEditorState";
@@ -24,9 +25,9 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
   const [importing, setImporting] = useState(false);
   /** assetId → 全尺寸 object URL(大图预览用,缺失时退化到缩略图) */
   const [fullUrls, setFullUrls] = useState<Record<string, string>>({});
-  /** 预览框实高,文字字号按 fontSize × 高/1000 换算(与导出同标尺) */
+  /** 预览框实测尺寸,文字布局按 fontSize × 高/1000 换算(与导出同标尺,T4) */
   const previewRef = useRef<HTMLDivElement>(null);
-  const [previewH, setPreviewH] = useState(0);
+  const [previewSize, setPreviewSize] = useState({ w: 0, h: 0 });
   const dragCaption = useRef<{ x: number; y: number } | null>(null);
   /** F-62 个人风格(localStorage,跨草稿) */
   const [myStyles, setMyStyles] = useState<SavedCaptionStyle[]>([]);
@@ -57,11 +58,13 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gallery]);
 
-  // 预览框随图片/窗口变化,持续跟踪实高保证文字比例与导出一致
+  // 预览框随图片/窗口变化,持续跟踪实测尺寸保证文字比例与导出一致
   useEffect(() => {
     const el = previewRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setPreviewH(el.clientHeight));
+    const ro = new ResizeObserver(() =>
+      setPreviewSize({ w: el.clientWidth, h: el.clientHeight })
+    );
     ro.observe(el);
     return () => ro.disconnect();
   });
@@ -281,25 +284,42 @@ export default function GalleryEditor({ editor }: { editor: EditorState }) {
                 className="max-h-full max-w-full object-contain"
                 style={cssFilter ? { filter: cssFilter } : undefined}
               />
-              {active.caption && (
-                <span
-                  onPointerDown={onCaptionPointerDown}
-                  onPointerMove={onCaptionPointerMove}
-                  onPointerUp={onCaptionPointerUp}
-                  className="absolute max-w-[90%] -translate-x-1/2 -translate-y-1/2 cursor-move touch-none select-none whitespace-pre-wrap rounded px-2 py-1 text-center leading-snug hover:ring-1 hover:ring-zinc-500"
-                  style={{
-                    left: `${captionStyle.x}%`,
-                    top: `${captionStyle.y}%`,
-                    color: captionStyle.color,
-                    background: captionStyle.background || undefined,
-                    fontWeight: captionStyle.fontWeight,
-                    fontFamily: getFont(captionStyle.fontFamily).css,
-                    fontSize: Math.max(9, (captionStyle.fontSize * previewH) / 1000),
-                  }}
-                >
-                  {active.caption}
-                </span>
-              )}
+              {active.caption &&
+                previewSize.h > 0 &&
+                (() => {
+                  // T4:与导出共用 text-layout,盒模型/折行逐像素一致
+                  const layout = layoutText(
+                    {
+                      content: active.caption,
+                      sizePx: (captionStyle.fontSize * previewSize.h) / 1000,
+                      fontWeight: captionStyle.fontWeight,
+                      fontFamily: getFont(captionStyle.fontFamily).css,
+                    },
+                    previewSize.w,
+                    previewSize.h
+                  );
+                  return (
+                    <span
+                      onPointerDown={onCaptionPointerDown}
+                      onPointerMove={onCaptionPointerMove}
+                      onPointerUp={onCaptionPointerUp}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 cursor-move touch-none select-none hover:outline hover:outline-1 hover:outline-zinc-500"
+                      style={{
+                        left: `${captionStyle.x}%`,
+                        top: `${captionStyle.y}%`,
+                        ...textLayerCss(
+                          {
+                            color: captionStyle.color,
+                            background: captionStyle.background || undefined,
+                          },
+                          layout
+                        ),
+                      }}
+                    >
+                      {layout.lines.join("\n")}
+                    </span>
+                  );
+                })()}
             </div>
             <p className="text-xs text-zinc-500">
               第 {images.findIndex((g) => g.id === active.id) + 1} / {images.length} 张

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { filterToCss, getFilter } from "@/lib/data/filters";
 import { getFont } from "@/lib/data/fonts";
 import { colorAdjustToCss } from "@/lib/color";
 import { formatDuration } from "@/lib/media";
 import { getTrack } from "@/lib/data/music";
 import { extractVideoFrame, loadImageElement } from "@/lib/engine/compose-image";
+import { layoutText, textLayerCss } from "@/lib/engine/text-layout";
 import {
   TRANSITION_DURATION,
   drawTransitionFrame,
@@ -65,6 +66,21 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
   } = editor;
   const [phoneFrame, setPhoneFrame] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
+  /** 画布实测像素尺寸;文字按 fontSize × 高/1000 换算,与导出同标尺(T4) */
+  const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
+  const canvasRO = useRef<ResizeObserver | null>(null);
+  // 手机预览开关会重挂画布节点,用 callback ref 重新挂观察器
+  const setCanvasNode = useCallback((el: HTMLDivElement | null) => {
+    canvasRef.current = el;
+    canvasRO.current?.disconnect();
+    canvasRO.current = null;
+    if (!el) return;
+    const ro = new ResizeObserver(() =>
+      setCanvasSize({ w: el.clientWidth, h: el.clientHeight })
+    );
+    ro.observe(el);
+    canvasRO.current = ro;
+  }, []);
   const videoRef = useRef<HTMLVideoElement>(null);
   const bgmRef = useRef<HTMLAudioElement>(null);
   const dragText = useRef<{ id: string; startX: number; startY: number } | null>(null);
@@ -256,7 +272,7 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
 
   const canvas = (
     <div
-      ref={canvasRef}
+      ref={setCanvasNode}
       className={`relative flex items-center justify-center overflow-hidden bg-black ${
         phoneFrame ? "h-full w-full rounded-[28px]" : `rounded-lg shadow-lg ${CANVAS_RATIO[draft.aspectRatio]}`
       }`}
@@ -305,40 +321,53 @@ export default function PreviewArea({ editor }: { editor: EditorState }) {
         style={mediaStyle}
       />
 
-      {/* F-15 文字叠层:只显示时间范围覆盖播放头的文字;暂停时选中的文字始终显示以便编辑 */}
-      {draft.texts
-        .filter(
-          (t) =>
-            (!playing && selection?.type === "text" && selection.id === t.id) ||
-            (playhead >= (t.start ?? 0) && playhead <= (t.end ?? Number.POSITIVE_INFINITY))
-        )
-        .map((t) => (
-        <div
-          key={t.id}
-          onPointerDown={(e) => onTextPointerDown(e, t.id)}
-          onPointerMove={onTextPointerMove}
-          onPointerUp={onTextPointerUp}
-          // click 与 pointerdown 是独立事件,不拦截会冒泡到画布触发取消选中(属性面板一闪即逝)
-          onClick={(e) => e.stopPropagation()}
-          className={`absolute -translate-x-1/2 -translate-y-1/2 cursor-move touch-none select-none whitespace-pre-wrap rounded px-2 py-0.5 text-center leading-snug ${
-            selection?.type === "text" && selection.id === t.id
-              ? "ring-2 ring-[#ff2442]"
-              : "hover:ring-1 hover:ring-zinc-500"
-          }`}
-          style={{
-            left: `${t.x}%`,
-            top: `${t.y}%`,
-            color: t.color,
-            background: t.background,
-            border: t.borderColor ? `2px solid ${t.borderColor}` : undefined,
-            fontWeight: t.fontWeight,
-            fontFamily: getFont(t.fontFamily).css,
-            fontSize: `${t.fontSize * 0.5}px`,
-          }}
-        >
-          {t.content}
-        </div>
-      ))}
+      {/* F-15 文字叠层:只显示时间范围覆盖播放头的文字;暂停时选中的文字始终显示以便编辑。
+          T4:布局(字号/盒模型/折行)与导出共用 text-layout,按画布实测高换算 */}
+      {canvasSize.h > 0 &&
+        draft.texts
+          .filter(
+            (t) =>
+              (!playing && selection?.type === "text" && selection.id === t.id) ||
+              (playhead >= (t.start ?? 0) && playhead <= (t.end ?? Number.POSITIVE_INFINITY))
+          )
+          .map((t) => {
+            const layout = layoutText(
+              {
+                content: t.content,
+                sizePx: (t.fontSize * canvasSize.h) / 1000,
+                fontWeight: t.fontWeight,
+                fontFamily: getFont(t.fontFamily).css,
+              },
+              canvasSize.w,
+              canvasSize.h
+            );
+            return (
+              <div
+                key={t.id}
+                onPointerDown={(e) => onTextPointerDown(e, t.id)}
+                onPointerMove={onTextPointerMove}
+                onPointerUp={onTextPointerUp}
+                // click 与 pointerdown 是独立事件,不拦截会冒泡到画布触发取消选中(属性面板一闪即逝)
+                onClick={(e) => e.stopPropagation()}
+                // 选中态用 outline(box-shadow 已被 inset 边框占用)
+                className={`absolute -translate-x-1/2 -translate-y-1/2 cursor-move touch-none select-none ${
+                  selection?.type === "text" && selection.id === t.id
+                    ? "outline outline-2 outline-[#ff2442]"
+                    : "hover:outline hover:outline-1 hover:outline-zinc-500"
+                }`}
+                style={{
+                  left: `${t.x}%`,
+                  top: `${t.y}%`,
+                  ...textLayerCss(
+                    { color: t.color, background: t.background, borderColor: t.borderColor },
+                    layout
+                  ),
+                }}
+              >
+                {layout.lines.join("\n")}
+              </div>
+            );
+          })}
     </div>
   );
 

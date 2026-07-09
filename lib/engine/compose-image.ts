@@ -1,4 +1,5 @@
 import { ColorGrader, isIdentityGrade, type GradeParams } from "./colorgrade";
+import { drawTextBox, layoutText } from "./text-layout";
 import { getFont } from "../data/fonts";
 import type { CaptionStyle, GalleryImage, TextOverlay } from "../types";
 
@@ -19,8 +20,8 @@ export interface RenderText {
 }
 
 /**
- * 预览中文字字号是「fontSize × 0.5px @ ~500px 高预览画布」,
- * 导出按画布高度等比换算,保持与预览观感一致。
+ * fontSize 以「画布高 = 1000」为标尺,按目标画布高换算 px。
+ * 预览端用画布实测像素高走同一公式(T4),两端观感一致。
  */
 export function overlayToRenderText(t: TextOverlay, canvasHeight: number): RenderText {
   return {
@@ -119,40 +120,24 @@ export function drawTextLayers(
   canvasH: number
 ): void {
   for (const t of texts) {
-    const lines = t.content.split("\n");
-    const lineHeight = t.sizePx * 1.35;
-    const cx = (t.xPct / 100) * canvasW;
-    const cy = (t.yPct / 100) * canvasH;
-    ctx.font = `${t.fontWeight === "bold" ? "700" : "400"} ${t.sizePx}px ${t.fontFamily ?? getFont(undefined).css}`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    if (t.background || t.borderColor) {
-      const padX = t.sizePx * 0.4;
-      const padY = t.sizePx * 0.2;
-      const maxLineW = Math.max(...lines.map((l) => ctx.measureText(l).width));
-      const boxW = maxLineW + padX * 2;
-      const boxH = lines.length * lineHeight + padY * 2;
-      const r = t.sizePx * 0.15;
-      const x = cx - boxW / 2;
-      const y = cy - boxH / 2;
-      ctx.beginPath();
-      ctx.roundRect(x, y, boxW, boxH, r);
-      if (t.background) {
-        ctx.fillStyle = t.background;
-        ctx.fill();
-      }
-      if (t.borderColor) {
-        // 预览边框 2px @ ~500px 高预览画布,导出按画布高度等比
-        ctx.strokeStyle = t.borderColor;
-        ctx.lineWidth = Math.max(1.5, canvasH * 0.004);
-        ctx.stroke();
-      }
-    }
-
-    ctx.fillStyle = t.color;
-    const startY = cy - ((lines.length - 1) * lineHeight) / 2;
-    lines.forEach((line, i) => ctx.fillText(line, cx, startY + i * lineHeight));
+    // T4 所见即所得:布局(含自动换行)与预览 DOM 共用 text-layout
+    const layout = layoutText(
+      {
+        content: t.content,
+        sizePx: t.sizePx,
+        fontWeight: t.fontWeight,
+        fontFamily: t.fontFamily ?? getFont(undefined).css,
+      },
+      canvasW,
+      canvasH
+    );
+    drawTextBox(
+      ctx,
+      { color: t.color, background: t.background, borderColor: t.borderColor },
+      layout,
+      (t.xPct / 100) * canvasW,
+      (t.yPct / 100) * canvasH
+    );
   }
 }
 
